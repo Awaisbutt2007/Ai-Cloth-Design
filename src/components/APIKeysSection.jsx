@@ -19,6 +19,11 @@ import {
   ShieldCheck,
 } from 'lucide-react';
 
+const DEMO_KEYS = {
+  prod: { masked: 'sk-••••••••8dK9', reveal: 'sk-demo-not-a-real-key-prod' },
+  test: { masked: 'sk-••••••••P31x', reveal: 'sk-demo-not-a-real-key-test' },
+};
+
 function APIKeysSection({ activeSection }) {
   const [showKey, setShowKey] = useState({});
   const [isPopupOpen, setIsPopupOpen] = useState(false);
@@ -66,7 +71,7 @@ function APIKeysSection({ activeSection }) {
                 <tr>
                   <td><strong>Production</strong></td>
                   <td className="api-key-text">
-                    {showKey['prod'] ? 'sk-prod-98765432108dK9' : 'sk-••••••••8dK9'}
+                    {showKey['prod'] ? DEMO_KEYS.prod.reveal : DEMO_KEYS.prod.masked}
                   </td>
                   <td>02 Jul</td>
                   <td>Today</td>
@@ -76,7 +81,7 @@ function APIKeysSection({ activeSection }) {
                       <button title="Show/Hide" onClick={() => toggleShowKey('prod')}>
                         {showKey['prod'] ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
-                      <button title="Copy" onClick={() => copyToClipboard('sk-prod-98765432108dK9')}>
+                      <button title="Copy" onClick={() => copyToClipboard(DEMO_KEYS.prod.reveal)}>
                         <Copy size={16} />
                       </button>
                       <button title="Regenerate"><RefreshCw size={16} /></button>
@@ -87,7 +92,7 @@ function APIKeysSection({ activeSection }) {
                 <tr>
                   <td><strong>Testing</strong></td>
                   <td className="api-key-text">
-                    {showKey['test'] ? 'sk-test-1234567890P31x' : 'sk-••••••••P31x'}
+                    {showKey['test'] ? DEMO_KEYS.test.reveal : DEMO_KEYS.test.masked}
                   </td>
                   <td>01 Jul</td>
                   <td>Yesterday</td>
@@ -97,7 +102,7 @@ function APIKeysSection({ activeSection }) {
                       <button title="Show/Hide" onClick={() => toggleShowKey('test')}>
                         {showKey['test'] ? <EyeOff size={16} /> : <Eye size={16} />}
                       </button>
-                      <button title="Copy" onClick={() => copyToClipboard('sk-test-1234567890P31x')}>
+                      <button title="Copy" onClick={() => copyToClipboard(DEMO_KEYS.test.reveal)}>
                         <Copy size={16} />
                       </button>
                       <button title="Delete" className="api-action-danger"><Trash2 size={16} /></button>
