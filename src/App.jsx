@@ -71,11 +71,15 @@ function App() {
   useEffect(() => {
     const stored = window.localStorage.getItem('aifashionUserProfile');
     if (stored) {
-      const profile = JSON.parse(stored);
-      setSavedProfile(profile);
-      setUserName(profile.name || '');
-      setUserEmail(profile.email || '');
-      setUserPhone(profile.phone || '');
+      try {
+        const profile = JSON.parse(stored);
+        setSavedProfile(profile);
+        setUserName(profile.name || '');
+        setUserEmail(profile.email || '');
+        setUserPhone(profile.phone || '');
+      } catch {
+        window.localStorage.removeItem('aifashionUserProfile');
+      }
     }
   }, []);
 
