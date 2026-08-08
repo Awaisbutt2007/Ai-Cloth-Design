@@ -2,37 +2,31 @@ import React, { useState } from 'react';
 import {
   Plus, UploadCloud, Download, Search, Filter, Grid, List,
   Eye, Edit, Copy, Share2, Trash2, Heart, DownloadCloud, X,
-  TrendingUp, ChevronLeft, ChevronRight, CheckSquare, Square, Palette, Zap, Star
+  TrendingUp, ChevronLeft, ChevronRight, CheckSquare, Square, Palette, Zap, Star,
+  Sparkles, Maximize, Folder, Clock, ArrowUpDown, LayoutGrid, List as ListIcon, Maximize2, Minimize2,
+  Archive, FileText, FileSpreadsheet
 } from 'lucide-react';
 
-const mockDesigns = Array.from({ length: 12 }).map((_, i) => ({
-  id: `d${i + 1}`,
-  title: ['Luxury Hoodie', 'Streetwear Jacket', 'Vintage Dress', 'Minimalist Tee', 'Cyberpunk Coat'][i % 5],
-  category: ['Streetwear', 'Formal', 'Vintage', 'Casual', 'Luxury'][i % 5],
-  style: ['Casual', 'Luxury', 'Vintage', 'Streetwear', 'Minimal'][i % 5],
-  created: '8 Jul 2026',
-  status: ['Published', 'Draft', 'Archived'][i % 3],
-  favorite: i % 4 === 0,
-  image: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=600&q=80',
-  prompt: 'Red oversized hoodie with anime print and futuristic details.',
-  fabric: 'Cotton Blend',
-  season: 'Winter',
-  colors: ['Black', 'Red', 'White'],
-  resolution: '2048×2048'
-}));
+// Enhanced mock designs with all required fields
+const mockDesigns = [];
 
-function TotalDesignsSection({ activeSection }) {
+const collections = [
+  'Summer Collection', 'Winter Collection', 'Streetwear', 'Luxury', 'Sports', 'Client Projects'
+];
+
+function TotalDesignsSection({ activeSection, handleSectionClick }) {
   const [viewMode, setViewMode] = useState('grid');
+  const [displaySize, setDisplaySize] = useState('medium');
   const [selectedDesigns, setSelectedDesigns] = useState([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedDesign, setSelectedDesign] = useState(null);
-  
-  // Filters state
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchBy, setSearchBy] = useState('Design Name');
   const [categoryFilter, setCategoryFilter] = useState('All');
   const [statusFilter, setStatusFilter] = useState('All');
-  const [styleFilter, setStyleFilter] = useState('All');
+  const [dateFilter, setDateFilter] = useState('All');
   const [sortOrder, setSortOrder] = useState('Newest');
+  const [selectedCollection, setSelectedCollection] = useState(null);
 
   const toggleSelection = (id) => {
     setSelectedDesigns(prev => 
@@ -54,18 +48,21 @@ function TotalDesignsSection({ activeSection }) {
   };
 
   return (
-    <section id="total-designs" className={`section total-designs-section ${activeSection === 'total-designs' ? 'active' : 'hidden'}`}>
+    <section id="all-designs" className={`section total-designs-section ${(activeSection === 'all-designs' || activeSection === 'total-designs') ? 'active' : 'hidden'}`}>
       
       {/* 1. Page Header */}
       <div className="td-header">
         <div className="td-header-left">
-          <h2>Total Designs</h2>
-          <p>View and manage all your AI-generated fashion designs.</p>
+          <h2>All Designs</h2>
+          <p>Manage all your AI-generated fashion designs.</p>
         </div>
         <div className="td-header-actions">
-          <button className="ws-btn-secondary"><UploadCloud size={16} /> Import Design</button>
-          <button className="ws-btn-secondary"><Download size={16} /> Export</button>
-          <button className="ws-btn-primary"><Plus size={16} /> New Design</button>
+          <button className="ws-btn-secondary">
+            <Plus size={16} /> New Design
+          </button>
+          <button className="ws-btn-secondary">
+            <UploadCloud size={16} /> Import Design
+          </button>
         </div>
       </div>
 
@@ -73,194 +70,255 @@ function TotalDesignsSection({ activeSection }) {
       <div className="td-stats-row">
         <div className="td-stat-card">
           <div className="td-stat-title">Total Designs</div>
-          <div className="td-stat-value">248</div>
+          <div className="td-stat-value">0</div>
         </div>
         <div className="td-stat-card">
           <div className="td-stat-title">Favorites</div>
-          <div className="td-stat-value text-warning">38</div>
+          <div className="td-stat-value">0</div>
         </div>
         <div className="td-stat-card">
-          <div className="td-stat-title">Downloads</div>
-          <div className="td-stat-value text-info">154</div>
+          <div className="td-stat-title">This Month</div>
+          <div className="td-stat-value">0</div>
         </div>
         <div className="td-stat-card">
-          <div className="td-stat-title">Draft Designs</div>
-          <div className="td-stat-value text-orange">21</div>
+          <div className="td-stat-title">Storage Used</div>
+          <div className="td-stat-value">0 MB</div>
         </div>
       </div>
 
       <div className="td-main-layout">
         <div className="td-content-area">
           
-          {/* 3 & 4. Search, Filters, View Toggle */}
+          {/* 3 & 4. Search, Filters, View Options */}
           <div className="td-toolbar">
-            <div className="td-search-box">
-              <Search size={16} className="td-search-icon" />
-              <input 
-                type="text" 
-                placeholder="Search Designs..." 
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="td-filters">
-              <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
-                <option value="All">Category ▼</option>
-                <option value="T-Shirts">T-Shirts</option>
-                <option value="Jackets">Jackets</option>
-                <option value="Dresses">Dresses</option>
-                <option value="Shoes">Shoes</option>
-              </select>
-              <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
-                <option value="All">Status ▼</option>
-                <option value="Published">Published</option>
-                <option value="Draft">Draft</option>
-                <option value="Archived">Archived</option>
-              </select>
-              <select value={styleFilter} onChange={(e) => setStyleFilter(e.target.value)}>
-                <option value="All">Style ▼</option>
-                <option value="Casual">Casual</option>
-                <option value="Luxury">Luxury</option>
-                <option value="Streetwear">Streetwear</option>
-              </select>
-              <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
-                <option value="Newest">Sort By: Newest</option>
-                <option value="Oldest">Oldest</option>
-                <option value="Most Downloaded">Most Downloaded</option>
-                <option value="A-Z">A–Z</option>
-              </select>
-            </div>
-            <div className="td-view-toggle">
-              <button 
-                className={viewMode === 'grid' ? 'active' : ''} 
-                onClick={() => setViewMode('grid')}
-                title="Grid View"
-              >
-                <Grid size={18} />
-              </button>
-              <button 
-                className={viewMode === 'list' ? 'active' : ''} 
-                onClick={() => setViewMode('list')}
-                title="List View"
-              >
-                <List size={18} />
-              </button>
+            <div className="td-search-wrapper">
+              <div className="td-search-box">
+                <Search size={16} className="td-search-icon" />
+                <input 
+                  type="text" 
+                  placeholder="Search Designs..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+              <div className="td-search-by">
+                <select value={searchBy} onChange={(e) => setSearchBy(e.target.value)}>
+                  <option value="Design Name">Design Name</option>
+                  <option value="Prompt">Prompt</option>
+                  <option value="Tags">Tags</option>
+                  <option value="Product Type">Product Type</option>
+                </select>
+              </div>
+              <div className="td-filters">
+                <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value)}>
+                  <option value="All">Category: All</option>
+                  <option value="T-Shirt">T-Shirt</option>
+                  <option value="Hoodie">Hoodie</option>
+                  <option value="Jacket">Jacket</option>
+                  <option value="Dress">Dress</option>
+                  <option value="Shoes">Shoes</option>
+                  <option value="Cap">Cap</option>
+                </select>
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+                  <option value="All">Status: All</option>
+                  <option value="Completed">Completed</option>
+                  <option value="Draft">Draft</option>
+                  <option value="Processing">Processing</option>
+                  <option value="Failed">Failed</option>
+                </select>
+                <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)}>
+                  <option value="All">Date: All</option>
+                  <option value="Today">Today</option>
+                  <option value="This Week">This Week</option>
+                  <option value="This Month">This Month</option>
+                  <option value="Custom">Custom</option>
+                </select>
+                <select value={sortOrder} onChange={(e) => setSortOrder(e.target.value)}>
+                  <option value="Newest">Sort: Newest</option>
+                  <option value="Oldest">Oldest</option>
+                  <option value="Most Downloaded">Most Downloaded</option>
+                  <option value="Most Viewed">Most Viewed</option>
+                  <option value="Favorites">Favorites</option>
+                </select>
+              </div>
+              <div className="td-view-options">
+                <div className="td-view-toggle">
+                  <button 
+                    className={viewMode === 'grid' ? 'active' : ''} 
+                    onClick={() => setViewMode('grid')}
+                    title="Grid View"
+                  >
+                    <Grid size={18} />
+                  </button>
+                  <button 
+                    className={viewMode === 'list' ? 'active' : ''} 
+                    onClick={() => setViewMode('list')}
+                    title="List View"
+                  >
+                    <List size={18} />
+                  </button>
+                </div>
+                <div className="td-display-size">
+                  <button 
+                    className={displaySize === 'small' ? 'active' : ''} 
+                    onClick={() => setDisplaySize('small')}
+                  >
+                    <Minimize2 size={16} />
+                  </button>
+                  <button 
+                    className={displaySize === 'medium' ? 'active' : ''} 
+                    onClick={() => setDisplaySize('medium')}
+                  >
+                    <LayoutGrid size={16} />
+                  </button>
+                  <button 
+                    className={displaySize === 'large' ? 'active' : ''} 
+                    onClick={() => setDisplaySize('large')}
+                  >
+                    <Maximize2 size={16} />
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
 
           {/* 5. Design Gallery */}
           {mockDesigns.length === 0 ? (
-            /* 10. Empty State */
+            /* 12. Empty State */
             <div className="td-empty-state">
               <div className="td-empty-icon">🎨</div>
-              <h3>No Designs Yet</h3>
-              <p>Create your first AI Fashion Design</p>
-              <button className="ws-btn-primary">Generate Design</button>
+              <h3>No Designs Found</h3>
+              <p>Create your first AI fashion design.</p>
+              <button className="ws-btn-primary" onClick={(e) => handleSectionClick(e, 'generator')}>
+                <Sparkles size={16} /> Generate Design
+              </button>
             </div>
           ) : (
-            <div className={`td-gallery ${viewMode === 'grid' ? 'td-grid-view' : 'td-list-view'}`}>
-              {mockDesigns.map(design => (
-                <div key={design.id} className="td-design-card" onClick={() => openDrawer(design)}>
-                  <div className="td-card-checkbox" onClick={(e) => { e.stopPropagation(); toggleSelection(design.id); }}>
-                    {selectedDesigns.includes(design.id) ? <CheckSquare size={20} className="text-primary" /> : <Square size={20} className="text-muted" />}
-                  </div>
-                  <div className="td-image-wrapper">
-                    <img src={design.image} alt={design.title} />
-                    <div className="td-status-badge">{design.status}</div>
-                    {design.favorite && <div className="td-favorite-badge"><Heart size={14} fill="currentColor" /></div>}
-                    
-                    {/* 6. Card Actions on Hover */}
-                    <div className="td-card-actions">
-                      <button title="View" onClick={(e) => { e.stopPropagation(); openDrawer(design); }}><Eye size={16} /></button>
-                      <button title="Edit" onClick={(e) => e.stopPropagation()}><Edit size={16} /></button>
-                      <button title="Duplicate" onClick={(e) => e.stopPropagation()}><Copy size={16} /></button>
-                      <button title="Download" onClick={(e) => e.stopPropagation()}><DownloadCloud size={16} /></button>
-                      <button title="Share" onClick={(e) => e.stopPropagation()}><Share2 size={16} /></button>
-                      <button title="Delete" className="text-danger" onClick={(e) => e.stopPropagation()}><Trash2 size={16} /></button>
+            <>
+              <div className={`td-gallery ${viewMode === 'grid' ? 'td-grid-view' : 'td-list-view'} td-size-${displaySize}`}>
+                {mockDesigns.map(design => (
+                  <div key={design.id} className="td-design-card" onClick={() => openDrawer(design)}>
+                    <div className="td-card-checkbox" onClick={(e) => { e.stopPropagation(); toggleSelection(design.id); }}>
+                      {selectedDesigns.includes(design.id) ? <CheckSquare size={20} className="text-primary" /> : <Square size={20} className="text-muted" />}
+                    </div>
+                    <div className="td-image-wrapper">
+                      <img src={design.image} alt={design.title} />
+                      <div className="td-status-badge">{design.status}</div>
+                      {design.favorite && <div className="td-favorite-badge"><Heart size={14} fill="currentColor" /></div>}
+                      
+                      {/* Quick Actions on Hover */}
+                      <div className="td-card-actions">
+                        <button title="View" onClick={(e) => { e.stopPropagation(); openDrawer(design); }}><Eye size={16} /></button>
+                        <button title="Edit" onClick={(e) => { e.stopPropagation(); }}><Edit size={16} /></button>
+                        <button title="Duplicate" onClick={(e) => { e.stopPropagation(); }}><Copy size={16} /></button>
+                        <button title="Download" onClick={(e) => { e.stopPropagation(); }}><DownloadCloud size={16} /></button>
+                        <button title="Delete" onClick={(e) => { e.stopPropagation(); }}><Trash2 size={16} /></button>
+                      </div>
+                    </div>
+                    <div className="td-card-info">
+                      <div className="td-card-header-row">
+                        <h4>{design.title}</h4>
+                      </div>
+                      <div className="td-card-meta">
+                        <span>{design.category}</span>
+                        <span>•</span>
+                        <span>{design.created}</span>
+                        <span>•</span>
+                        <span>{design.resolution}</span>
+                        <span>•</span>
+                        <span>{design.creditsUsed} Credits</span>
+                      </div>
+                      
+                      {/* 10. Activity */}
+                      <div className="td-card-activity">
+                        <div className="td-activity-item">
+                          <Clock size={12} />
+                          <span>{design.lastEdited}</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="td-card-info">
-                    <div className="td-card-header-row">
-                      <h4>{design.title}</h4>
-                      <div className="td-stars">★★★★★</div>
-                    </div>
-                    <div className="td-card-meta">
-                      <span>{design.category}</span>
-                      <span>•</span>
-                      <span>Created {design.created}</span>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+              
+              {/* 11. Load More */}
+              <div className="td-load-more">
+                <button className="ws-btn-secondary">
+                  Load More
+                </button>
+              </div>
+            </>
           )}
-
-          {/* 9. Pagination */}
-          <div className="td-pagination">
-            <button className="td-page-btn" disabled><ChevronLeft size={16} /> Previous</button>
-            <div className="td-page-numbers">
-              <button className="td-page-num active">1</button>
-              <button className="td-page-num">2</button>
-              <button className="td-page-num">3</button>
-              <button className="td-page-num">4</button>
-            </div>
-            <button className="td-page-btn">Next <ChevronRight size={16} /></button>
-          </div>
-
         </div>
 
-        {/* 11. Right Side Analytics */}
-        <div className="td-analytics-sidebar">
-          <h3>Quick Insights</h3>
-          <div className="td-mini-card">
-            <div className="td-mc-icon"><Palette size={18} className="text-primary" /></div>
-            <div className="td-mc-info">
-              <label>Most Used Style</label>
-              <p>Streetwear</p>
+        {/* Sidebar for Collections & Premium Features */}
+        <div className="td-sidebar">
+          {/* 9. Collections */}
+          <div className="td-collections">
+            <h3 className="td-sidebar-title">Collections</h3>
+            <div className="td-collection-list">
+              {collections.map((col, i) => (
+              <button 
+                key={col} 
+                className={`td-collection-btn ${selectedCollection === col ? 'active' : ''}`}
+                onClick={() => setSelectedCollection(col)}
+              >
+                <Folder size={16} />
+                <span>{col}</span>
+              </button>
+            ))}
             </div>
           </div>
-          <div className="td-mini-card">
-            <div className="td-mc-icon"><Heart size={18} className="text-danger" /></div>
-            <div className="td-mc-info">
-              <label>Favorite Color</label>
-              <p>Black</p>
+
+          {/* Premium Features */}
+          <div className="td-premium-sidebar">
+            <h3 className="td-sidebar-title">🌟 Premium Features</h3>
+            <div className="td-premium-item">
+              <Star size={16} />
+              <span>⭐ Favorites</span>
             </div>
-          </div>
-          <div className="td-mini-card">
-            <div className="td-mc-icon"><Star size={18} className="text-warning" /></div>
-            <div className="td-mc-info">
-              <label>Best Performing</label>
-              <p>Luxury Jacket</p>
+            <div className="td-premium-item">
+              <Palette size={16} />
+              <span>🏷 Smart Tags</span>
             </div>
-          </div>
-          <div className="td-mini-card">
-            <div className="td-mc-icon"><Zap size={18} className="text-info" /></div>
-            <div className="td-mc-info">
-              <label>AI Credits Used</label>
-              <p>845</p>
+            <div className="td-premium-item">
+              <TrendingUp size={16} />
+              <span>📊 Design Analytics</span>
+            </div>
+            <div className="td-premium-item">
+              <Zap size={16} />
+              <span>🔄 Version History</span>
+            </div>
+            <div className="td-premium-item">
+              <Archive size={16} />
+              <span>📦 Export Collection</span>
+            </div>
+            <div className="td-premium-item">
+              <Sparkles size={16} />
+              <span>🤖 AI Recommendations</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 8. Floating Bulk Actions */}
+      {/* 7. Floating Bulk Actions */}
       {selectedDesigns.length > 0 && (
         <div className="td-bulk-actions">
           <div className="td-bulk-info">
-            <button className="td-clear-btn" onClick={() => setSelectedDesigns([])}><X size={16} /></button>
-            <span>{selectedDesigns.length} selected</span>
-          </div>
-          <div className="td-bulk-buttons">
-            <button className="ws-btn-secondary"><Heart size={16} /> Favorite</button>
-            <button className="ws-btn-secondary"><DownloadCloud size={16} /> Download</button>
-            <button className="ws-btn-secondary">Move</button>
-            <button className="ws-btn-secondary">Archive</button>
-            <button className="ws-btn-danger"><Trash2 size={16} /> Delete</button>
-          </div>
+          <button className="td-clear-btn" onClick={() => setSelectedDesigns([])}><X size={16} /></button>
+          <span>{selectedDesigns.length} selected</span>
+        </div>
+        <div className="td-bulk-buttons">
+          <button className="ws-btn-secondary"><Trash2 size={16} /> Delete</button>
+          <button className="ws-btn-secondary"><DownloadCloud size={16} /> Download</button>
+          <button className="ws-btn-secondary">Move</button>
+          <button className="ws-btn-secondary">Add Tags</button>
+          <button className="ws-btn-secondary"><Archive size={16} /> Export ZIP</button>
+        </div>
         </div>
       )}
 
-      {/* 7. Design Details Drawer */}
+      {/* 8. Design Details Drawer */}
       <div className={`td-drawer-overlay ${drawerOpen ? 'open' : ''}`} onClick={() => setDrawerOpen(false)}>
         <div className="td-drawer" onClick={(e) => e.stopPropagation()}>
           <div className="td-drawer-header">
@@ -273,47 +331,140 @@ function TotalDesignsSection({ activeSection }) {
               
               <div className="td-drawer-details">
                 <div className="td-drawer-section">
-                  <label>Prompt</label>
+                  <label>Prompt Used</label>
                   <p className="td-prompt-text">{selectedDesign.prompt}</p>
                 </div>
                 
                 <div className="td-drawer-grid">
                   <div className="td-info-item">
-                    <label>Style</label>
-                    <p>{selectedDesign.style}</p>
-                  </div>
-                  <div className="td-info-item">
-                    <label>Fabric</label>
-                    <p>{selectedDesign.fabric}</p>
-                  </div>
-                  <div className="td-info-item">
-                    <label>Season</label>
-                    <p>{selectedDesign.season}</p>
+                    <label>AI Model</label>
+                    <p>{selectedDesign.aiModel}</p>
                   </div>
                   <div className="td-info-item">
                     <label>Resolution</label>
                     <p>{selectedDesign.resolution}</p>
                   </div>
+                  <div className="td-info-item">
+                    <label>Generation Time</label>
+                    <p>12 sec</p>
+                  </div>
+                  <div className="td-info-item">
+                    <label>Credits Used</label>
+                    <p>{selectedDesign.creditsUsed}</p>
+                  </div>
                 </div>
 
                 <div className="td-drawer-section">
-                  <label>Colors</label>
-                  <div className="td-color-tags">
-                    {selectedDesign.colors.map(color => (
-                      <span key={color} className="td-color-tag">
-                        <span className="td-color-dot" style={{ backgroundColor: color }}></span> {color}
-                      </span>
+                  <label>Tags</label>
+                  <div className="td-tag-list">
+                    {selectedDesign.tags.map(tag => (
+                      <span key={tag} className="td-tag">{tag}</span>
                     ))}
                   </div>
                 </div>
+                <div className="td-drawer-section">
+                  <label>Notes</label>
+                  <textarea className="td-notes-input" placeholder="Add notes..."></textarea>
+                </div>
+                
+                {/* 📊 Design Analytics (Premium) */}
+                <div className="td-drawer-section">
+                  <div className="td-analytics-grid">
+                    <div className="td-analytics-item">
+                      <label>Downloads</label>
+                      <span>{selectedDesign.downloads}</span>
+                    </div>
+                    <div className="td-analytics-item">
+                      <label>Views</label>
+                      <span>{selectedDesign.views}</span>
+                    </div>
+                    <div className="td-analytics-item">
+                      <label>Shares</label>
+                      <span>{selectedDesign.shares}</span>
+                    </div>
+                    <div className="td-analytics-item">
+                      <label>Mockups Created</label>
+                      <span>1</span>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* 🔄 Version History (Premium) */}
+                <div className="td-drawer-section">
+                  <div className="td-version-history">
+                    <div className="td-version-item">
+                      <div className="td-version-number">Version 3</div>
+                      <div className="td-version-time">2 hours ago</div>
+                    </div>
+                    <div className="td-version-divider">
+                      <div className="td-version-line"></div>
+                      <div className="td-version-arrow">↓</div>
+                    </div>
+                    <div className="td-version-item">
+                      <div className="td-version-number">Version 2</div>
+                      <div className="td-version-time">Yesterday</div>
+                    </div>
+                    <div className="td-version-divider">
+                      <div className="td-version-line"></div>
+                      <div className="td-version-arrow">↓</div>
+                    </div>
+                    <div className="td-version-item">
+                      <div className="td-version-number">Version 1</div>
+                      <div className="td-version-time">2 days ago</div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* 🤖 AI Recommendations (Premium) */}
+                <div className="td-drawer-section">
+                  <div className="td-recommendations">
+                    <div className="td-recommendation-item">
+                      Create Hoodie Mockup
+                    </div>
+                    <div className="td-recommendation-item">
+                      Generate Matching Cap
+                    </div>
+                    <div className="td-recommendation-item">
+                      Generate Jacket Version
+                    </div>
+                    <div className="td-recommendation-item">
+                      Upscale Design
+                    </div>
+                  </div>
+                </div>
+                
               </div>
 
               <div className="td-drawer-actions">
-                <button className="ws-btn-primary w-full"><Edit size={16} /> Edit Design</button>
-                <button className="ws-btn-secondary w-full"><Sparkles size={16} /> Regenerate</button>
+                <button className="ws-btn-primary w-full" onClick={(e) => handleSectionClick(e, 'generator')}>
+                  <Edit size={16} /> Open Editor
+                </button>
+                <button className="ws-btn-secondary w-full" onClick={(e) => handleSectionClick(e, 'hoodie-mockup')}>
+                  Create Mockup
+                </button>
+                <button className="ws-btn-secondary w-full" onClick={(e) => handleSectionClick(e, 'female-models')}>
+                  Apply to Avatar
+                </button>
                 <div className="td-drawer-actions-row">
-                  <button className="ws-btn-secondary w-full"><DownloadCloud size={16} /> Download</button>
-                  <button className="ws-btn-secondary w-full"><Share2 size={16} /> Share</button>
+                  <button className="ws-btn-secondary w-full">
+                    <Share2 size={16} /> Share
+                  </button>
+                  <button className="ws-btn-secondary w-full">
+                    <Sparkles size={16} /> Regenerate
+                  </button>
+                </div>
+              </div>
+              
+              {/* 🔗 Related Designs */}
+              <div className="td-related-designs">
+                <h4>Related Designs</h4>
+                <div className="td-related-grid">
+                  {mockDesigns.slice(0, 4).map(rel => (
+                    <div key={rel.id} className="td-related-card">
+                      <img src={rel.image} alt={rel.title} />
+                      <span>{rel.title}</span>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

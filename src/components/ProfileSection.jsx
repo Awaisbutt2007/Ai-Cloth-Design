@@ -28,16 +28,20 @@ function ProfileSection({
   setUserEmail,
   userPhone,
   setUserPhone,
+  userPassword,
+  setUserPassword,
+  userPhoto,
+  setUserPhoto,
+  userHandle,
+  setUserHandle,
   profileMessage,
 }) {
-  const [profilePhoto, setProfilePhoto] = useState(null);
   const [isHoveringPhoto, setIsHoveringPhoto] = useState(false);
   const [subscriptionPlan] = useState('Pro');
-  const [totalDesigns] = useState(47);
+  const [totalDesigns] = useState(0);
   const [aiCreditsLeft] = useState(820);
   const [aiCreditsTotal] = useState(1000);
   const [memberSince] = useState('Jan 2025');
-  const [displayUsername] = useState('@fashionista_ai');
   const fileInputRef = useRef(null);
 
   const handlePhotoUpload = (e) => {
@@ -45,7 +49,7 @@ function ProfileSection({
     if (file) {
       const reader = new FileReader();
       reader.onloadend = () => {
-        setProfilePhoto(reader.result);
+        setUserPhoto(reader.result);
       };
       reader.readAsDataURL(file);
     }
@@ -82,8 +86,8 @@ function ProfileSection({
               onMouseLeave={() => setIsHoveringPhoto(false)}
               onClick={() => fileInputRef.current?.click()}
             >
-              {profilePhoto ? (
-                <img src={profilePhoto} alt="Profile" className="profile-photo-img" />
+              {userPhoto ? (
+                <img src={userPhoto} alt="Profile" className="profile-photo-img" />
               ) : (
                 <div className="profile-photo-placeholder">
                   <span className="profile-initials">{getInitials()}</span>
@@ -107,7 +111,7 @@ function ProfileSection({
               onChange={handlePhotoUpload}
               className="hidden-file-input"
             />
-            <button className="upload-photo-btn" onClick={() => fileInputRef.current?.click()}>
+            <button type="button" className="upload-photo-btn" onClick={() => fileInputRef.current?.click()}>
               <Camera size={14} />
               Upload Photo
             </button>
@@ -118,7 +122,7 @@ function ProfileSection({
             <h2 className="profile-display-name">
               {savedProfile?.name || userName || 'Fashion Creator'}
             </h2>
-            <span className="profile-username">{displayUsername}</span>
+            <span className="profile-username">{userHandle}</span>
           </div>
 
           {/* Subscription Badge */}
@@ -166,7 +170,7 @@ function ProfileSection({
               </div>
               <div className="info-content">
                 <span className="info-label">Username</span>
-                <span className="info-value">{displayUsername}</span>
+                <span className="info-value">{userHandle}</span>
               </div>
             </div>
           </div>
@@ -305,16 +309,33 @@ function ProfileSection({
 
             <div className="form-group">
               <label className="form-label">
+                <Shield size={14} />
+                Password
+              </label>
+              <div className="form-input-wrap" style={{ position: 'relative', display: 'block' }}>
+                <input
+                  value={userPassword || ''}
+                  onChange={(e) => setUserPassword(e.target.value)}
+                  placeholder="••••••••"
+                  type={isHoveringPhoto ? 'text' : 'password'} // hack for now, or just use another state? We'll just use password type
+                  className="form-input"
+                />
+              </div>
+            </div>
+
+            <div className="form-group">
+              <label className="form-label">
                 <AtSign size={14} />
                 Username
               </label>
               <div className="form-input-wrap">
                 <input
-                  value={displayUsername}
-                  disabled
-                  className="form-input disabled"
+                  value={userHandle}
+                  onChange={(e) => setUserHandle(e.target.value)}
+                  placeholder="@your_handle"
+                  className="form-input"
                 />
-                <span className="form-input-hint">Username cannot be changed</span>
+                <span className="form-input-hint">Your unique profile handle</span>
               </div>
             </div>
 
@@ -352,7 +373,7 @@ function ProfileSection({
               </div>
               <div className="account-info-row">
                 <span className="account-info-label">Password</span>
-                <span className="account-info-value">••••••••</span>
+                <span className="account-info-value">{userPassword ? '••••••••' : 'Not set'}</span>
               </div>
             </div>
           </div>

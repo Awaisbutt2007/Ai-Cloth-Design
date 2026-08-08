@@ -24,41 +24,19 @@ function Sidebar({
   setSidebarSearch,
   sidebarSearchRef,
 }) {
-  const [expandedDropdowns, setExpandedDropdowns] = useState({});
-
-  const toggleDropdown = (section) => {
-    setExpandedDropdowns((prev) => ({
-      ...prev,
-      [section]: !prev[section],
-    }));
-  };
-
-  const handleMouseEnter = (section) => {
-    setExpandedDropdowns((prev) => ({
-      ...prev,
-      [section]: true,
-    }));
-  };
-
-  const handleMouseLeave = (section) => {
-    setExpandedDropdowns((prev) => ({
-      ...prev,
-      [section]: false,
-    }));
-  };
 
   const sidebarSections = [
     {
       id: 'dashboard',
       title: 'Dashboard',
       icon: Home,
-      items: ['Overview', 'Total Designs', 'Credits Left', 'Recent Activity'],
+      items: ['Profile', 'Overview', 'Total Designs', 'Credits Left', 'Recent Activity'],
     },
     {
       id: 'ai-studio',
       title: 'AI Design Studio',
       icon: Wand2,
-      items: ['Generate Design', 'Text to Fashion', 'Image to Fashion', 'Sketch to Design'],
+      items: ['Generate Design'],
     },
     {
       id: 'my-designs',
@@ -70,37 +48,32 @@ function Sidebar({
       id: 'collections',
       title: 'Collections',
       icon: Folder,
-      items: ['Summer Collection', 'Winter Collection', 'Casual Wear', 'Formal Wear', 'Streetwear', 'Custom Collections'],
+      items: ['Custom Collections'],
     },
     {
       id: 'inspiration',
       title: 'Inspiration',
       icon: Sparkles,
-      items: ['Trending Designs', 'Color Palettes', 'Fabric Library', 'Style Gallery'],
+      items: ['Color Palettes', 'Fabric Library', 'Style Gallery'],
     },
     {
       id: 'ai-models',
       title: 'AI Models',
       icon: Users,
-      items: ['Female Models', 'Male Models', 'Kids Models', 'Custom Avatar'],
+      items: ['Custom Avatar'],
     },
-    {
-      id: 'mockups',
-      title: 'Mockups',
-      icon: ShoppingBag,
-      items: ['T-Shirt Mockup', 'Hoodie Mockup', 'Dress Mockup', 'Jacket Mockup'],
-    },
+
     {
       id: 'ai-tools',
       title: 'AI Tools',
       icon: Wrench,
-      items: ['Background Remover', 'Upscale Image', 'Recolor Outfit', 'Pattern Generator', 'Logo Generator'],
+      items: ['Background Remover', 'Upscale Image', 'Recolor Outfit', 'Pattern Generator'],
     },
     {
       id: 'assets',
       title: 'Assets',
       icon: Image,
-      items: ['Uploaded Images', 'AI Generated Images', 'Saved Prompts', 'Brand Logos'],
+      items: ['Uploaded Images', 'AI Generated Images', 'Saved Prompts'],
     },
     {
       id: 'analytics',
@@ -119,7 +92,7 @@ function Sidebar({
       id: 'settings',
       title: 'Settings',
       icon: Settings,
-      items: ['Profile', 'Workspace', 'API Keys', 'Security'],
+      items: ['Workspace', 'API Keys', 'Security'],
     },
     {
       id: 'help',
@@ -161,50 +134,33 @@ function Sidebar({
           />
         </div>
         <nav className="sidebar-nav">
-          {filteredSections.map((section) => {
-            const IconComponent = section.icon;
-            const isExpanded = expandedDropdowns[section.id];
+          {filteredSections.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: '40px 10px', color: '#8d6f55' }}>
+              <p style={{ fontWeight: 600, fontSize: '1.05rem', marginBottom: '8px' }}>No results found</p>
+              <p style={{ fontSize: '0.85rem', opacity: 0.8 }}>Koi bhi section nahi mila.</p>
+            </div>
+          ) : (
+            <div className="dropdown-items" style={{ animation: 'none', padding: 0, display: 'grid', gap: '8px' }}>
+              {filteredSections.map((section) =>
+                section.items.map((item) => {
+                  const lowerSearch = sidebarSearch ? sidebarSearch.toLowerCase() : '';
+                  const titleMatches = section.title.toLowerCase().includes(lowerSearch);
+                  const isItemHidden = sidebarSearch && !titleMatches && !item.toLowerCase().includes(lowerSearch);
 
-            return (
-              <div
-                key={section.id}
-                className="sidebar-dropdown"
-              >
-                <button
-                  className={`dropdown-toggle ${isExpanded ? 'expanded' : ''}`}
-                  onClick={() => toggleDropdown(section.id)}
-                >
-                  <div className="dropdown-header">
-                    <IconComponent size={20} className="dropdown-icon" />
-                    <span className="dropdown-title">{section.title}</span>
-                  </div>
-                  {section.items.length > 0 && (
-                    <ChevronDown size={18} className="dropdown-arrow" />
-                  )}
-                </button>
-                {isExpanded && section.items.length > 0 && (
-                  <div className="dropdown-items">
-                    {section.items.map((item) => {
-                      const lowerSearch = sidebarSearch ? sidebarSearch.toLowerCase() : '';
-                      const titleMatches = section.title.toLowerCase().includes(lowerSearch);
-                      const isItemHidden = sidebarSearch && !titleMatches && !item.toLowerCase().includes(lowerSearch);
-
-                      return (
-                        <a
-                          key={item}
-                          href={`#${section.id}-${item.toLowerCase().replace(/\s+/g, '-')}`}
-                          onClick={(event) => handleSectionClick(event, item.toLowerCase().replace(/\s+/g, '-'))}
-                          className={`${activeSection === item.toLowerCase().replace(/\s+/g, '-') ? 'active' : ''} ${isItemHidden ? 'hide-item' : ''}`}
-                        >
-                          {item}
-                        </a>
-                      );
-                    })}
-                  </div>
-                )}
-              </div>
-            );
-          })}
+                  return (
+                    <a
+                      key={`${section.id}-${item}`}
+                      href={`#${section.id}-${item.toLowerCase().replace(/\s+/g, '-')}`}
+                      onClick={(event) => handleSectionClick(event, item.toLowerCase().replace(/\s+/g, '-'))}
+                      className={`${activeSection === item.toLowerCase().replace(/\s+/g, '-') ? 'active' : ''} ${isItemHidden ? 'hide-item' : ''}`}
+                    >
+                      {item}
+                    </a>
+                  );
+                })
+              )}
+            </div>
+          )}
         </nav>
       </div>
     </aside>
