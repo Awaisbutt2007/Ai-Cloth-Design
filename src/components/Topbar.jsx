@@ -13,9 +13,19 @@ function Topbar({
         <input
           ref={topSearchRef}
           className="top-search"
+          type="search"
+          name="app-global-search"
           value={topSearch}
           onChange={(e) => setTopSearch(e.target.value)}
           placeholder="Ctrl + K to search"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck="false"
+          data-1p-ignore="true"
+          data-lpignore="true"
+          readOnly
+          onFocus={(e) => e.target.removeAttribute('readonly')}
         />
       </div>
       <label className="theme-toggle" htmlFor="theme-switch">

@@ -32,9 +32,12 @@ import CustomAvatarSection from './components/CustomAvatarSection';
 import FavoritesSection from './components/FavoritesSection';
 import PublishedDesignsSection from './components/PublishedDesignsSection';
 import Login from './components/Login';
+import WelcomeOverlay from './components/WelcomeOverlay';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
+  const [welcomeExiting, setWelcomeExiting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('Ready-to-Wear');
   const [darkMode, setDarkMode] = useState(() => {
     return window.localStorage.getItem('aifashionDarkMode') === 'true';
@@ -54,6 +57,7 @@ function App() {
   const [userPassword, setUserPassword] = useState('');
   const [userPhoto, setUserPhoto] = useState(null);
   const [userHandle, setUserHandle] = useState('@fashionista_ai');
+  const [userBio, setUserBio] = useState('');
   const [savedProfile, setSavedProfile] = useState(null);
   const [profileMessage, setProfileMessage] = useState('');
   const [topSearch, setTopSearch] = useState('');
@@ -100,6 +104,7 @@ function App() {
       setUserPassword(profile.password || '');
       setUserPhoto(profile.photo || null);
       setUserHandle(profile.handle || '@fashionista_ai');
+      setUserBio(profile.bio || '');
     }
   }, []);
 
@@ -129,6 +134,12 @@ function App() {
   }, [activeSection]);
 
   useEffect(() => {
+    if (!isLoggedIn) return;
+    setTopSearch('');
+    setSidebarSearch('');
+  }, [isLoggedIn]);
+
+  useEffect(() => {
     const sectionIds = ['profile', 'workspace', 'dashboard', 'ai', 'generator', 'customize', 'sale', 'insights', 'gallery', 'settings'];
     const observer = new IntersectionObserver(
       (entries) => {
@@ -151,27 +162,54 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
-  function handleProfileSave(event) {
-    event.preventDefault();
-    if (!userName.trim() || !userEmail.trim() || !userPhone.trim() || !userHandle.trim()) {
-      setProfileMessage('Please complete all fields before saving.');
-      return;
+  function handleProfileSave(updates = {}) {
+    const name = (updates.name ?? userName).trim();
+    const handle = (updates.handle ?? userHandle).trim();
+    const bio = (updates.bio ?? userBio).trim();
+
+    if (!name) {
+      return { success: false, message: 'Name is required to update your profile.' };
+    }
+    if (!handle) {
+      return { success: false, message: 'Username is required to update your profile.' };
+    }
+    if (!userEmail.trim()) {
+      return { success: false, message: 'Account email is missing. Please log in again.' };
     }
 
     const profile = {
-      name: userName.trim(),
+      name,
       email: userEmail.trim(),
       phone: userPhone.trim(),
       password: userPassword.trim(),
       photo: userPhoto,
-      handle: userHandle.trim(),
+      handle,
+      bio,
       savedAt: new Date().toISOString(),
     };
 
-    window.localStorage.setItem('aifashionUserProfile', JSON.stringify(profile));
-    setSavedProfile(profile);
-    setProfileMessage('Profile saved successfully.');
-    setTimeout(() => setProfileMessage(''), 3000);
+    try {
+      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(profile));
+
+      const mockUsers = JSON.parse(window.localStorage.getItem('mockUsers') || '[]');
+      const userIdx = mockUsers.findIndex(u => u.email === profile.email);
+      if (userIdx !== -1) {
+        mockUsers[userIdx] = { ...mockUsers[userIdx], ...profile };
+      } else {
+        mockUsers.push(profile);
+      }
+      window.localStorage.setItem('mockUsers', JSON.stringify(mockUsers));
+
+      setUserName(name);
+      setUserHandle(handle);
+      setUserBio(bio);
+      setSavedProfile(profile);
+      setProfileMessage('Profile updated successfully.');
+      setTimeout(() => setProfileMessage(''), 3000);
+      return { success: true, message: 'Profile updated successfully.' };
+    } catch {
+      return { success: false, message: 'Profile update failed. Please try again.' };
+    }
   }
 
   function handleGenerate() {
@@ -199,20 +237,45 @@ function App() {
     }, 150);
   }
 
+  function handleLogin(user) {
+    setIsLoggedIn(true);
+    setShowWelcomeOverlay(true);
+    setWelcomeExiting(false);
+    setActiveSection('profile');
+    window.localStorage.setItem('aifashionActiveSection', 'profile');
+    setTopSearch('');
+    setSidebarSearch('');
+    if (user) {
+      setUserName(user.name || '');
+      setUserEmail(user.email || '');
+      setUserPhone(user.phone || '');
+      setUserPassword(user.password || '');
+      setUserHandle(user.handle || '@fashionista_ai');
+      setUserBio(user.bio || '');
+      setSavedProfile(user);
+      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(user));
+    }
+    requestAnimationFrame(() => {
+      topSearchRef.current && (topSearchRef.current.value = '');
+      sidebarSearchRef.current && (sidebarSearchRef.current.value = '');
+      document.getElementById('profile')?.scrollIntoView({ behavior: 'instant', block: 'start' });
+    });
+  }
+
+  function handleWelcomeContinue() {
+    setWelcomeExiting(true);
+    setTimeout(() => {
+      setShowWelcomeOverlay(false);
+      setWelcomeExiting(false);
+    }, 520);
+  }
+
   if (!isLoggedIn) {
-    return <Login onLogin={(user) => {
-      setIsLoggedIn(true);
-      if (user) {
-        setUserName(user.name || '');
-        setUserEmail(user.email || '');
-        setUserPhone(user.phone || '');
-        setUserPassword(user.password || '');
-        setSavedProfile(user); // Also set as saved profile so 'Not set' doesn't show initially
-      }
-    }} />;
+    return <Login onLogin={handleLogin} />;
   }
 
   return (
+    <>
     <div className="app-shell">
       <Sidebar
         activeSection={activeSection}
@@ -245,16 +308,12 @@ function App() {
             userName={userName}
             setUserName={setUserName}
             userEmail={userEmail}
-            setUserEmail={setUserEmail}
-            userPhone={userPhone}
-            setUserPhone={setUserPhone}
-            userPassword={userPassword}
-            setUserPassword={setUserPassword}
             userPhoto={userPhoto}
             setUserPhoto={setUserPhoto}
             userHandle={userHandle}
             setUserHandle={setUserHandle}
-            profileMessage={profileMessage}
+            userBio={userBio}
+            setUserBio={setUserBio}
           />
 
           <WorkspaceSection activeSection={activeSection} />
@@ -363,6 +422,10 @@ function App() {
         </div>
       </div>
     </div>
+    {showWelcomeOverlay && (
+      <WelcomeOverlay exiting={welcomeExiting} onContinue={handleWelcomeContinue} />
+    )}
+    </>
   );
 }
 

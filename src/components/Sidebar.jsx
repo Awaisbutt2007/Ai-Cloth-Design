@@ -128,9 +128,19 @@ function Sidebar({
           <label>Sidebar search</label>
           <input
             ref={sidebarSearchRef}
+            type="search"
+            name="app-sidebar-search"
             value={sidebarSearch}
             onChange={(e) => setSidebarSearch(e.target.value)}
             placeholder="Ctrl + / to search sidebar"
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck="false"
+            data-1p-ignore="true"
+            data-lpignore="true"
+            readOnly
+            onFocus={(e) => e.target.removeAttribute('readonly')}
           />
         </div>
         <nav className="sidebar-nav">
