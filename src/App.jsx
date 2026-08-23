@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { designs } from './constants';
+import { designs, repairAllLocalPosts } from './constants';
+import { Check, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ProfileSection from './components/ProfileSection';
@@ -217,6 +218,11 @@ function App() {
   const [selectedDesign, setSelectedDesign] = useState(null);
   const [selectedProduct, setSelectedProduct] = useState(null);
 
+  const [toastList, setToastList] = useState([]);
+  const toastIdRef = useRef(0);
+  const toastTimerRef = useRef({});
+  const [postsRefreshTick, setPostsRefreshTick] = useState(0);
+
   const topSearchRef = useRef(null);
   const sidebarSearchRef = useRef(null);
 
@@ -270,6 +276,37 @@ function App() {
     setTopSearch('');
     setSidebarSearch('');
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    const refreshPosts = () => setPostsRefreshTick((tick) => tick + 1);
+    window.addEventListener('aifashion-posts-updated', refreshPosts);
+    window.addEventListener('storage', refreshPosts);
+    return () => {
+      window.removeEventListener('aifashion-posts-updated', refreshPosts);
+      window.removeEventListener('storage', refreshPosts);
+    };
+  }, []);
+
+  function removeToast(id) {
+    setToastList((current) => current.map((toast) => (
+      toast.id === id ? { ...toast, closing: true } : toast
+    )));
+    setTimeout(() => {
+      setToastList((current) => current.filter((toast) => toast.id !== id));
+      if (toastTimerRef.current[id]) {
+        clearTimeout(toastTimerRef.current[id]);
+        delete toastTimerRef.current[id];
+      }
+    }, 350);
+  }
+
+  function showToast(message, type = 'info') {
+    const id = ++toastIdRef.current;
+    const title = type === 'success' ? 'Upload Successful' : 'Upload Failed';
+    const toast = { id, type, title, desc: message };
+    setToastList((current) => [...current, toast]);
+    toastTimerRef.current[id] = setTimeout(() => removeToast(id), 3500);
+  }
 
   useEffect(() => {
     const sectionIds = ['profile', 'workspace', 'dashboard', 'ai', 'generator', 'customize', 'sale', 'insights', 'gallery', 'settings'];
@@ -543,6 +580,7 @@ function App() {
           <AllUserPostsSection
             activeSection={activeSection}
             handleProductClick={handleProductClick}
+            postsRefreshTick={postsRefreshTick}
           />
 
           <AISection activeSection={activeSection} />
@@ -618,7 +656,16 @@ function App() {
           <CreditsSection activeSection={activeSection} />
 
           <PaymentHistorySection activeSection={activeSection} />
-          <UploadedImagesSection activeSection={activeSection} userEmail={userEmail} />
+          <UploadedImagesSection
+            activeSection={activeSection}
+            userEmail={userEmail}
+            onUploadSuccess={() => {
+              setActiveSection('home');
+              window.localStorage.setItem('aifashionActiveSection', 'home');
+              showToast('Your post is now visible to all users.', 'success');
+            }}
+            onUploadError={(message) => showToast(message, 'error')}
+          />
           <AIGeneratedImagesSection activeSection={activeSection} />
 
           <DownloadsAnalyticsSection activeSection={activeSection} />
@@ -645,6 +692,23 @@ function App() {
     {showWelcomeOverlay && (
       <WelcomeOverlay exiting={welcomeExiting} onContinue={handleWelcomeContinue} />
     )}
+    <div className="tr-toast-container" aria-live="polite" aria-atomic="true">
+      {toastList.map((toast) => {
+        const IconComp = toast.type === 'success' ? Check : toast.type === 'error' ? AlertCircle : Info;
+        return (
+          <div key={toast.id} className={`tr-toast ${toast.type} ${toast.closing ? 'closing' : ''}`}>
+            <div className="tr-toast-icon"><IconComp size={18} strokeWidth={2.5} /></div>
+            <div className="tr-toast-body">
+              <div className="tr-toast-title">{toast.title}</div>
+              <div className="tr-toast-desc">{toast.desc}</div>
+            </div>
+            <button type="button" className="tr-toast-close" aria-label="Dismiss notification" onClick={() => removeToast(toast.id)}>
+              <X size={14} strokeWidth={2.5} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
     </>
   );
 }

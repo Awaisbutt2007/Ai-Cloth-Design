@@ -37,7 +37,8 @@ function getAllPosts() {
   return result;
 }
 
-function AllUserPostsSection({ activeSection, handleProductClick }) {
+function AllUserPostsSection({ activeSection, handleProductClick, postsRefreshTick }) {
+  void postsRefreshTick;
   const allPosts = getAllPosts();
 
   return (

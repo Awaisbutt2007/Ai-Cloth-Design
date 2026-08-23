@@ -1,7 +1,7 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Info, FileText, ChevronDown, Image as ImageIcon, X, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
 
-export default function UploadedImagesSection({ activeSection, userEmail }) {
+export default function UploadedImagesSection({ activeSection, userEmail, onUploadSuccess, onUploadError }) {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [price, setPrice] = useState('');
@@ -62,7 +62,7 @@ export default function UploadedImagesSection({ activeSection, userEmail }) {
 
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
-      alert("Please select at least one file to upload.");
+      onUploadError?.('Please select at least one file to upload.');
       return;
     }
 
@@ -110,9 +110,7 @@ export default function UploadedImagesSection({ activeSection, userEmail }) {
 
       saveToGlobalPosts(newPost);
       saveToProfileStats(newPost, userKey);
-      if (userKey !== 'default') {
-        saveToProfileStats(newPost, 'default');
-      }
+      window.dispatchEvent(new Event('aifashion-posts-updated'));
 
       setTitle('');
       setCategory('');
@@ -120,10 +118,10 @@ export default function UploadedImagesSection({ activeSection, userEmail }) {
       setDescription('');
       setSelectedFiles([]);
 
-      alert('Upload successful! Your post is now visible to all users.');
+      onUploadSuccess?.();
     } catch (err) {
       console.error('Upload error:', err);
-      alert('Upload failed. Please try again.');
+      onUploadError?.(`Upload failed: ${err?.message || 'Please try again.'}`);
     } finally {
       setUploading(false);
     }
