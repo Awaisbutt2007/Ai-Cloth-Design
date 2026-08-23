@@ -38,6 +38,132 @@ import WelcomeOverlay from './components/WelcomeOverlay';
 import InboxSection from './components/InboxSection';
 import ProductDetailsSection from './components/ProductDetailsSection';
 
+function initGlobalSeedPosts() {
+  const key = 'aifashionGlobalPosts';
+  try {
+    const existing = window.localStorage.getItem(key);
+    if (existing) {
+      const arr = JSON.parse(existing);
+      if (Array.isArray(arr) && arr.length > 0) return;
+    }
+  } catch (e) {}
+
+  const seedPosts = [
+    {
+      id: 'seed-1-' + Date.now(),
+      url: 'https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=600&q=80',
+      images: ['https://images.unsplash.com/photo-1556821840-3a63f95609a7?auto=format&fit=crop&w=600&q=80'],
+      title: 'Luxury Oversized Hoodie',
+      category: 'fashion',
+      price: '89.99',
+      description: 'Premium quality oversized hoodie with minimalist design. Perfect for streetwear enthusiasts.',
+      date: new Date(Date.now() - 86400000 * 2).toISOString(),
+      isNew: true,
+      views: 1240,
+      shares: 56,
+      authorEmail: 'awais@aifashion.com',
+      authorName: 'Awais Designer',
+      authorHandle: '@awais_designs',
+    },
+    {
+      id: 'seed-2-' + Date.now(),
+      url: 'https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=600&q=80',
+      images: ['https://images.unsplash.com/photo-1515372039744-b8f02a3ae446?auto=format&fit=crop&w=600&q=80'],
+      title: 'Summer Resort Dress',
+      category: 'fashion',
+      price: '129.50',
+      description: 'Elegant summer dress with floral patterns. Ideal for beach vacations and resort wear.',
+      date: new Date(Date.now() - 86400000 * 5).toISOString(),
+      isNew: true,
+      views: 890,
+      shares: 42,
+      authorEmail: 'sara@fashion.com',
+      authorName: 'Sara Khan',
+      authorHandle: '@sara_style',
+    },
+    {
+      id: 'seed-3-' + Date.now(),
+      url: 'https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=600&q=80',
+      images: ['https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=600&q=80'],
+      title: 'Modern Sports Jacket',
+      category: 'design',
+      price: '159.00',
+      description: 'Modern sports jacket with breathable fabric. Great for athletic and casual wear.',
+      date: new Date(Date.now() - 86400000 * 1).toISOString(),
+      isNew: true,
+      views: 560,
+      shares: 28,
+      authorEmail: 'zain@studio.com',
+      authorName: 'Zain Studio',
+      authorHandle: '@zain_studio',
+    },
+    {
+      id: 'seed-4-' + Date.now(),
+      url: 'https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=600&q=80',
+      images: ['https://images.unsplash.com/photo-1512436991641-6745cdb1723f?auto=format&fit=crop&w=600&q=80'],
+      title: 'Futuristic Street Style',
+      category: 'fashion',
+      price: '199.99',
+      description: 'Futuristic street style outfit with reflective layers and bold silhouettes.',
+      date: new Date(Date.now() - 86400000 * 3).toISOString(),
+      isNew: false,
+      views: 2100,
+      shares: 112,
+      authorEmail: 'awais@aifashion.com',
+      authorName: 'Awais Designer',
+      authorHandle: '@awais_designs',
+    },
+    {
+      id: 'seed-5-' + Date.now(),
+      url: 'https://images.unsplash.com/photo-1495121605193-b116b5b9c5d6?auto=format&fit=crop&w=600&q=80',
+      images: ['https://images.unsplash.com/photo-1495121605193-b116b5b9c5d6?auto=format&fit=crop&w=600&q=80'],
+      title: 'Velvet Noir Evening Wear',
+      category: 'design',
+      price: '249.00',
+      description: 'Minimal elegance with soft velvet textures and architectural cutouts. Evening collection.',
+      date: new Date(Date.now() - 86400000 * 7).toISOString(),
+      isNew: false,
+      views: 3200,
+      shares: 156,
+      authorEmail: 'sara@fashion.com',
+      authorName: 'Sara Khan',
+      authorHandle: '@sara_style',
+    },
+    {
+      id: 'seed-6-' + Date.now(),
+      url: 'https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=600&q=80',
+      images: ['https://images.unsplash.com/photo-1483985988355-763728e1935b?auto=format&fit=crop&w=600&q=80'],
+      title: 'Chromatic Streetwear',
+      category: 'texture',
+      price: '79.99',
+      description: 'High-contrast color blocking, metallic accents, and bold logo details.',
+      date: new Date(Date.now() - 86400000 * 4).toISOString(),
+      isNew: true,
+      views: 1560,
+      shares: 78,
+      authorEmail: 'zain@studio.com',
+      authorName: 'Zain Studio',
+      authorHandle: '@zain_studio',
+    },
+  ];
+
+  window.localStorage.setItem(key, JSON.stringify(seedPosts));
+
+  const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
+  for (const post of seedPosts) {
+    const aEmail = post.authorEmail || 'default';
+    if (!allProfiles[aEmail]) {
+      allProfiles[aEmail] = { posts: 0, followers: 0, following: 0, postImages: [] };
+    }
+    const exists = allProfiles[aEmail].postImages?.some(p => p.id === post.id);
+    if (!exists) {
+      allProfiles[aEmail].postImages = [post, ...(allProfiles[aEmail].postImages || [])];
+      allProfiles[aEmail].posts = (allProfiles[aEmail].posts || 0) + 1;
+    }
+  }
+  window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
+}
+
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
@@ -47,6 +173,7 @@ function App() {
     return window.localStorage.getItem('aifashionDarkMode') === 'true';
   });
   const [activeSection, setActiveSection] = useState(() => {
+    initGlobalSeedPosts();
     return window.localStorage.getItem('aifashionActiveSection') || 'profile';
   });
   const [isSectionLoading, setIsSectionLoading] = useState(false);
@@ -272,10 +399,10 @@ function App() {
     const productId = typeof product === 'object' ? (product.id || product.url || product.title) : product;
 
     if (typeof product === 'object') {
-      const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
       const updatedProduct = { ...product, views: (product.views || 0) + 1 };
       let found = false;
-      
+
+      const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
       for (const email in allProfiles) {
         if (allProfiles[email].postImages) {
           const idx = allProfiles[email].postImages.findIndex(p => 
@@ -288,11 +415,27 @@ function App() {
           }
         }
       }
-      
       if (found) {
         window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
         currentProduct = updatedProduct;
       }
+
+      try {
+        const globalStr = window.localStorage.getItem('aifashionGlobalPosts');
+        if (globalStr) {
+          const globalArr = JSON.parse(globalStr);
+          if (Array.isArray(globalArr)) {
+            const gIdx = globalArr.findIndex(p => 
+              typeof p === 'object' && (p.id === productId || p.url === productId || p.title === productId)
+            );
+            if (gIdx !== -1) {
+              globalArr[gIdx] = updatedProduct;
+              window.localStorage.setItem('aifashionGlobalPosts', JSON.stringify(globalArr));
+              currentProduct = updatedProduct;
+            }
+          }
+        }
+      } catch (e) {}
     }
       
     const recentlyViewedStr = window.localStorage.getItem('aifashionRecentlyViewed');
@@ -475,7 +618,7 @@ function App() {
           <CreditsSection activeSection={activeSection} />
 
           <PaymentHistorySection activeSection={activeSection} />
-          <UploadedImagesSection activeSection={activeSection} />
+          <UploadedImagesSection activeSection={activeSection} userEmail={userEmail} />
           <AIGeneratedImagesSection activeSection={activeSection} />
 
           <DownloadsAnalyticsSection activeSection={activeSection} />

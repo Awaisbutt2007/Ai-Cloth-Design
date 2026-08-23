@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, Star, Lightbulb, Minus, Plus, Truck, RefreshCcw, ShieldCheck, Sparkles, ArrowLeft } from 'lucide-react';
+import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
 
 export default function ProductDetailsSection({ activeSection, product, handleSectionClick }) {
   const [selectedSize, setSelectedSize] = useState('M');
@@ -8,7 +9,8 @@ export default function ProductDetailsSection({ activeSection, product, handleSe
 
   useEffect(() => {
     if (product) {
-      let images = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
+      let rawImages = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
+      let images = rawImages.map(x => repairImageUrl(x));
       if (images.length === 1) {
         images = [images[0], images[0], images[0]];
       } else if (images.length === 2) {
@@ -22,7 +24,8 @@ export default function ProductDetailsSection({ activeSection, product, handleSe
 
   const title = typeof product === 'string' ? 'Custom Design' : (product.title || 'Custom Design');
   const price = typeof product === 'string' ? 'Custom' : `Rs. ${product.price || 0}`;
-  let images = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
+  let rawImages = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
+  let images = rawImages.map(x => repairImageUrl(x));
   const isNew = typeof product === 'object' && product.isNew;
 
   if (images.length === 1) {
@@ -60,7 +63,7 @@ export default function ProductDetailsSection({ activeSection, product, handleSe
                     {img.startsWith('data:video') || img.match(/\.(mp4|webm)$/) ? (
                       <video src={img} />
                     ) : (
-                      <img src={img} alt={`Thumb ${i+1}`} />
+                      <img src={img} alt={`Thumb ${i+1}`} onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
                     )}
                   </div>
                 ))}
@@ -69,7 +72,7 @@ export default function ProductDetailsSection({ activeSection, product, handleSe
                 {activeImage && (activeImage.startsWith('data:video') || activeImage.match(/\.(mp4|webm)$/)) ? (
                   <video src={activeImage} autoPlay loop muted className="product-main-image" />
                 ) : (
-                  <img src={activeImage} alt="Main Product" className="product-main-image" />
+                  <img src={activeImage} alt="Main Product" className="product-main-image" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
                 )}
                 <button className="main-image-favorite">
                   <Heart size={20} />

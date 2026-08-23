@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import {
   Camera, Share2, Settings, QrCode, Copy, Check, Grid, Heart, User, AtSign, Clock, AlertCircle, X, ArrowLeft, MoreVertical, LogOut, Star, Eye
 } from 'lucide-react';
+import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 
@@ -20,13 +21,50 @@ function getProfileStats(email) {
   const userKey = email || 'default';
   const userStats = all[userKey] || { posts: 0, followers: 0, following: 0, postImages: [] };
   
+  const seenIds = new Set();
+  let mergedImages = [];
+
   if (userKey !== 'default' && all['default']) {
-    return {
-      ...userStats,
-      postImages: [...(all['default'].postImages || []), ...(userStats.postImages || [])]
-    };
+    for (const p of (all['default'].postImages || [])) {
+      const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
+      if (!seenIds.has(pid)) {
+        seenIds.add(pid);
+        mergedImages.push(p);
+      }
+    }
   }
-  return userStats;
+  for (const p of (userStats.postImages || [])) {
+    const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
+    if (!seenIds.has(pid)) {
+      seenIds.add(pid);
+      mergedImages.push(p);
+    }
+  }
+
+  try {
+    const globalStr = window.localStorage.getItem('aifashionGlobalPosts');
+    if (globalStr) {
+      const globalArr = JSON.parse(globalStr);
+      if (Array.isArray(globalArr)) {
+        for (const p of globalArr) {
+          const authorMatch = typeof p === 'object' && (!userKey || userKey === 'default' || p.authorEmail === userKey || p.authorEmail === 'default');
+          if (authorMatch) {
+            const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
+            if (!seenIds.has(pid)) {
+              seenIds.add(pid);
+              mergedImages.push(p);
+            }
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  return {
+    ...userStats,
+    postImages: mergedImages,
+    posts: mergedImages.length,
+  };
 }
 
 function formatStatCount(value) {
@@ -277,7 +315,8 @@ function ProfileSection({
           {postImages.length > 0 ? (
             <div className="social-posts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
               {postImages.map((post, index) => {
-                const src = typeof post === 'string' ? post : post.url;
+                const rawSrc = typeof post === 'string' ? post : post.url;
+                const src = repairImageUrl(rawSrc);
                 return (
                   <div 
                     key={index} 
@@ -300,6 +339,7 @@ function ProfileSection({
                       alt={`Post ${index + 1}`} 
                       loading="lazy" 
                       style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} 
+                      onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }}
                     />
                     <div style={{ position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.6)', padding: '4px 10px', borderRadius: '16px', display: 'flex', alignItems: 'center', gap: '6px', color: '#fff', fontSize: '12px', backdropFilter: 'blur(4px)' }}>
                       <Eye size={14} />

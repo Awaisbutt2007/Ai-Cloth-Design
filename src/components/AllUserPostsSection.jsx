@@ -1,9 +1,44 @@
 import React from 'react';
 import { Heart, Star } from 'lucide-react';
+import { repairImageUrl, repairPostImages, DEFAULT_POST_PLACEHOLDER } from '../constants';
+
+function getAllPosts() {
+  const seenIds = new Set();
+  const result = [];
+
+  try {
+    const globalStr = window.localStorage.getItem('aifashionGlobalPosts');
+    if (globalStr) {
+      const globalArr = JSON.parse(globalStr);
+      if (Array.isArray(globalArr)) {
+        for (const p of globalArr) {
+          const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
+          if (!seenIds.has(pid)) {
+            seenIds.add(pid);
+            result.push(repairPostImages(p));
+          }
+        }
+      }
+    }
+  } catch (e) {}
+
+  try {
+    const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
+    const profilePosts = Object.values(allProfiles).flatMap(p => p.postImages || []);
+    for (const p of profilePosts) {
+      const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
+      if (!seenIds.has(pid)) {
+        seenIds.add(pid);
+        result.push(repairPostImages(p));
+      }
+    }
+  } catch (e) {}
+
+  return result;
+}
 
 function AllUserPostsSection({ activeSection, handleProductClick }) {
-  const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
-  const allPosts = Object.values(allProfiles).flatMap(p => p.postImages || []);
+  const allPosts = getAllPosts();
 
   return (
     <section id="all-user-posts" className={`section ${(activeSection === 'all-user-posts') ? 'active' : 'hidden'}`}>
@@ -17,7 +52,8 @@ function AllUserPostsSection({ activeSection, handleProductClick }) {
           <div className="all-user-posts-grid">
             {allPosts.length > 0 ? (
               allPosts.map((post, idx) => {
-                const imgSrc = typeof post === 'string' ? post : post.url;
+                const rawImgSrc = typeof post === 'string' ? post : post.url;
+                const imgSrc = repairImageUrl(rawImgSrc);
                 const title = typeof post === 'string' ? `User Design ${idx + 1}` : (post.title || `User Design ${idx + 1}`);
                 const price = typeof post === 'string' ? 'Custom' : `Rs. ${post.price || 0}`;
                 const isNew = typeof post === 'object' && post.isNew;
@@ -25,7 +61,7 @@ function AllUserPostsSection({ activeSection, handleProductClick }) {
                 return (
                   <div key={idx} className="trending-product-card" onClick={() => handleProductClick(post)}>
                     <div className="trending-product-image-wrap">
-                      <img src={imgSrc} alt={title} className="trending-product-image" loading="lazy" />
+                      <img src={imgSrc} alt={title} className="trending-product-image" loading="lazy" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
                       <button className="trending-product-favorite">
                         <Heart size={18} />
                       </button>

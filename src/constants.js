@@ -1,3 +1,84 @@
+export const DEFAULT_POST_PLACEHOLDER = 'https://images.unsplash.com/photo-1558769132-cb1aea458c5e?auto=format&fit=crop&w=600&q=80';
+
+export function isValidImageUrl(url) {
+  if (!url) return false;
+  if (typeof url !== 'string') return false;
+  if (url.startsWith('blob:')) return false;
+  if (url.startsWith('data:image/')) return true;
+  if (url.startsWith('http://') || url.startsWith('https://')) return true;
+  return false;
+}
+
+export function repairImageUrl(url) {
+  if (isValidImageUrl(url)) return url;
+  return DEFAULT_POST_PLACEHOLDER;
+}
+
+export function repairPostImages(post) {
+  if (!post) return post;
+  if (typeof post === 'string') return repairImageUrl(post);
+  const fixed = { ...post };
+  fixed.url = repairImageUrl(post.url);
+  if (Array.isArray(post.images)) {
+    fixed.images = post.images.map(img => repairImageUrl(img));
+  }
+  return fixed;
+}
+
+export function repairAllLocalPosts() {
+  try {
+    const globalKey = 'aifashionGlobalPosts';
+    const globalStr = window.localStorage.getItem(globalKey);
+    if (globalStr) {
+      try {
+        const arr = JSON.parse(globalStr);
+        if (Array.isArray(arr)) {
+          const hasBlob = arr.some(p => {
+            if (typeof p === 'string') return p.startsWith('blob:');
+            return p.url && p.url.startsWith('blob:');
+          });
+          if (hasBlob) {
+            const fixedArr = arr.map(p => repairPostImages(p));
+            window.localStorage.setItem(globalKey, JSON.stringify(fixedArr));
+          }
+        }
+      } catch (e) {}
+    }
+    const profilesStr = window.localStorage.getItem('aifashionProfileStats');
+    if (profilesStr) {
+      try {
+        const profiles = JSON.parse(profilesStr);
+        let changed = false;
+        for (const email in profiles) {
+          if (profiles[email].postImages && Array.isArray(profiles[email].postImages)) {
+            const hasBlob = profiles[email].postImages.some(p => {
+              if (typeof p === 'string') return p.startsWith('blob:');
+              return p.url && p.url.startsWith('blob:');
+            });
+            if (hasBlob) {
+              profiles[email].postImages = profiles[email].postImages.map(p => repairPostImages(p));
+              changed = true;
+            }
+          }
+        }
+        if (changed) {
+          window.localStorage.setItem('aifashionProfileStats', JSON.stringify(profiles));
+        }
+      } catch (e) {}
+    }
+  } catch (e) {}
+}
+
+if (typeof window !== 'undefined') {
+  if (document.readyState === 'loading') {
+    window.addEventListener('DOMContentLoaded', repairAllLocalPosts);
+  } else {
+    repairAllLocalPosts();
+  }
+  setTimeout(repairAllLocalPosts, 300);
+  setTimeout(repairAllLocalPosts, 1500);
+}
+
 export const designs = [
   {
     title: 'Solar Shift',

@@ -40,6 +40,8 @@ import {
   publishedDesigns,
   publishHistory,
   syncStatus,
+  repairImageUrl,
+  DEFAULT_POST_PLACEHOLDER,
 } from '../constants';
 
 const PRODUCT_OPTIONS = ['All', 'T-Shirt', 'Hoodie', 'Jacket', 'Dress', 'Shoes', 'Cap'];
@@ -456,7 +458,7 @@ function PublishedDesignCard({ design, onDesignClick, onArchive, onRepublish }) 
   return (
     <div className="published-design-card">
       <div className="card-preview" onClick={() => onDesignClick(design)}>
-        <img src={design.image} alt={design.name} />
+        <img src={repairImageUrl(design.image)} alt={design.name} onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
         <div className="card-overlay">
           <button type="button" className="overlay-btn" title="View">
             <Eye size={16} />
@@ -529,7 +531,7 @@ function PublishDetailsModal({ design, onClose }) {
         </button>
         <div className="modal-content">
           <div className="modal-image">
-            <img src={design.image} alt={design.name} />
+            <img src={repairImageUrl(design.image)} alt={design.name} onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
           </div>
           <div className="modal-info">
             <h2>{design.name}</h2>

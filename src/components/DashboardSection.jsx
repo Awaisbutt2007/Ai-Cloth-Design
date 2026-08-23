@@ -4,6 +4,7 @@ import {
   Search, Filter, Clock, CheckCircle, XCircle, Loader2, Palette, User, Image as ImageIcon, 
   Upload, CreditCard, Workflow, Star, Plus, FileText, ChevronDown, ChevronRight
 } from 'lucide-react';
+import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
 
 function DashboardSection({
   activeSection,
@@ -245,7 +246,7 @@ function DashboardSection({
             {recentDesigns.map((design) => (
               <div key={design.id} className="design-card">
                 <div className="design-image-wrapper">
-                  <img src={design.image} alt={design.title} className="design-image" />
+                  <img src={repairImageUrl(design.image)} alt={design.title} className="design-image" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
                   <div className="design-overlay">
                     <button className="design-action-btn" title="View">
                       <Eye size={18} />
@@ -380,7 +381,7 @@ function DashboardSection({
             {recentDesigns.map((design) => (
               <div key={design.id} className="design-card">
                 <div className="design-image-wrapper">
-                  <img src={design.image} alt={design.title} className="design-image" />
+                  <img src={repairImageUrl(design.image)} alt={design.title} className="design-image" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
                   <div className="design-overlay">
                     <button className="design-action-btn" title="View">
                       <Eye size={18} />
