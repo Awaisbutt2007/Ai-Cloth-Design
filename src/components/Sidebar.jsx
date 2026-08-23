@@ -15,6 +15,9 @@ import {
   Settings,
   HelpCircle,
   ChevronDown,
+  Search,
+  Inbox,
+  Crown,
 } from 'lucide-react';
 
 function Sidebar({
@@ -26,79 +29,55 @@ function Sidebar({
 }) {
 
   const sidebarSections = [
-    {
-      id: 'dashboard',
-      title: 'Dashboard',
-      icon: Home,
-      items: ['Profile', 'Overview', 'Total Designs', 'Credits Left', 'Recent Activity'],
-    },
-    {
-      id: 'ai-studio',
-      title: 'AI Design Studio',
-      icon: Wand2,
-      items: ['Generate Design'],
-    },
+  
     {
       id: 'my-designs',
-      title: 'My Designs',
+      title: 'My Designs', 
       icon: Shirt,
-      items: ['All Designs', 'Drafts', 'Favorites', 'Published'],
+      items: ['Home'],
     },
     {
-      id: 'collections',
-      title: 'Collections',
-      icon: Folder,
-      items: ['Custom Collections'],
+      id: 'search',
+      title: 'Search',
+      icon: Search,
+      items: ['Search'],
     },
     {
-      id: 'inspiration',
-      title: 'Inspiration',
-      icon: Sparkles,
-      items: ['Color Palettes', 'Fabric Library', 'Style Gallery'],
-    },
-    {
-      id: 'ai-models',
-      title: 'AI Models',
-      icon: Users,
-      items: ['Custom Avatar'],
-    },
-
-    {
-      id: 'ai-tools',
-      title: 'AI Tools',
-      icon: Wrench,
-      items: ['Background Remover', 'Upscale Image', 'Recolor Outfit', 'Pattern Generator'],
-    },
-    {
-      id: 'assets',
-      title: 'Assets',
+      id: 'Ai Scan',
+      title: 'Ai Scan',
       icon: Image,
-      items: ['Uploaded Images', 'AI Generated Images', 'Saved Prompts'],
+      items: ['Ai Scan'],
+    },
+      {
+      id: 'Upload',
+      title: 'Upload',
+      icon: Inbox,
+      items: ['Upload'],
     },
     {
-      id: 'analytics',
-      title: 'Analytics',
-      icon: BarChart3,
-      items: ['Downloads', 'Shares', 'AI Usage'],
+      id: 'inbox',
+      title: 'Inbox',
+      icon: Inbox,
+      items: ['Inbox'],
     },
+   
     {
       id: 'billing',
       title: 'Billing',
       icon: CreditCard,
-      items: ['Subscription', 'Credits', 'Payment History'],
+      items: ['Subscription'],
     },
-
     {
       id: 'settings',
       title: 'Settings',
       icon: Settings,
-      items: ['Workspace', 'API Keys', 'Security'],
+      items: ['Workspace'],
     },
     {
-      id: 'help',
-      title: 'Help Center',
-      icon: HelpCircle,
-      items: ['Documentation', 'FAQs', 'Contact Support'],
+      id: 'dashboard',
+      title: 'Dashboard',
+      icon: Home,
+      items: ['Profile'],
     },
   ];
 
@@ -172,6 +151,15 @@ function Sidebar({
             </div>
           )}
         </nav>
+
+        <div className="sidebar-premium-box">
+          <div className="premium-icon-wrap">
+            <Crown size={20} color="#FFD700" />
+          </div>
+          <h4 className="premium-title">Upgrade to Premium</h4>
+          <p className="premium-desc">Unlock all features and get more AI credits</p>
+          <button className="premium-upgrade-btn">Upgrade Now</button>
+        </div>
       </div>
     </aside>
   );

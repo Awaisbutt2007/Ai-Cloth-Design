@@ -3,7 +3,9 @@ import { designs } from './constants';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
 import ProfileSection from './components/ProfileSection';
+import CreateSection from './components/CreateSection';
 import DashboardSection from './components/DashboardSection';
+import AllUserPostsSection from './components/AllUserPostsSection';
 import AISection from './components/AISection';
 import GeneratorSection from './components/GeneratorSection';
 import DraftsSection from './components/DraftsSection';
@@ -33,6 +35,8 @@ import FavoritesSection from './components/FavoritesSection';
 import PublishedDesignsSection from './components/PublishedDesignsSection';
 import Login from './components/Login';
 import WelcomeOverlay from './components/WelcomeOverlay';
+import InboxSection from './components/InboxSection';
+import ProductDetailsSection from './components/ProductDetailsSection';
 
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -84,6 +88,7 @@ function App() {
     { id: 2, name: 'Jacket', product: 'Jacket', date: 'Yesterday', status: 'Completed' },
   ]);
   const [selectedDesign, setSelectedDesign] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(null);
 
   const topSearchRef = useRef(null);
   const sidebarSearchRef = useRef(null);
@@ -262,6 +267,61 @@ function App() {
     });
   }
 
+  function handleProductClick(product) {
+    let currentProduct = product;
+    const productId = typeof product === 'object' ? (product.id || product.url || product.title) : product;
+
+    if (typeof product === 'object') {
+      const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
+      const updatedProduct = { ...product, views: (product.views || 0) + 1 };
+      let found = false;
+      
+      for (const email in allProfiles) {
+        if (allProfiles[email].postImages) {
+          const idx = allProfiles[email].postImages.findIndex(p => 
+            typeof p === 'object' && (p.id === productId || p.url === productId || p.title === productId)
+          );
+          if (idx !== -1) {
+            allProfiles[email].postImages[idx] = updatedProduct;
+            found = true;
+            break;
+          }
+        }
+      }
+      
+      if (found) {
+        window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
+        currentProduct = updatedProduct;
+      }
+    }
+      
+    const recentlyViewedStr = window.localStorage.getItem('aifashionRecentlyViewed');
+    let recentlyViewed = [];
+    if (recentlyViewedStr) {
+      try { recentlyViewed = JSON.parse(recentlyViewedStr); } catch(e) {}
+    }
+    recentlyViewed = recentlyViewed.filter(p => {
+       const pId = typeof p === 'object' ? (p.id || p.url || p.title) : p;
+       return pId !== productId;
+    });
+    recentlyViewed.unshift(currentProduct);
+    if (recentlyViewed.length > 8) recentlyViewed.pop();
+    window.localStorage.setItem('aifashionRecentlyViewed', JSON.stringify(recentlyViewed));
+    
+    setSelectedProduct(currentProduct);
+    setActiveSection('product-details');
+    window.localStorage.setItem('aifashionActiveSection', 'product-details');
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  function closeWelcomeOverlay() {
+    setWelcomeExiting(true);
+    setTimeout(() => {
+      setShowWelcomeOverlay(false);
+      setWelcomeExiting(false);
+    }, 520);
+  }
+
   function handleWelcomeContinue() {
     setWelcomeExiting(true);
     setTimeout(() => {
@@ -301,6 +361,8 @@ function App() {
               <p>Loading...</p>
             </div>
           )}
+          <InboxSection activeSection={activeSection} />
+
           <ProfileSection
             activeSection={activeSection}
             savedProfile={savedProfile}
@@ -314,7 +376,11 @@ function App() {
             setUserHandle={setUserHandle}
             userBio={userBio}
             setUserBio={setUserBio}
+            handleSectionClick={handleSectionClick}
+            handleProductClick={handleProductClick}
           />
+
+          <CreateSection activeSection={activeSection} />
 
           <WorkspaceSection activeSection={activeSection} />
 
@@ -328,6 +394,12 @@ function App() {
           <TotalDesignsSection
             activeSection={activeSection}
             handleSectionClick={handleSectionClick}
+            handleProductClick={handleProductClick}
+          />
+
+          <AllUserPostsSection
+            activeSection={activeSection}
+            handleProductClick={handleProductClick}
           />
 
           <AISection activeSection={activeSection} />
@@ -419,6 +491,11 @@ function App() {
           <CustomAvatarSection activeSection={activeSection} />
           <FavoritesSection activeSection={activeSection} />
           <PublishedDesignsSection activeSection={activeSection} />
+          <ProductDetailsSection
+            activeSection={activeSection}
+            product={selectedProduct}
+            handleSectionClick={handleSectionClick}
+          />
         </div>
       </div>
     </div>

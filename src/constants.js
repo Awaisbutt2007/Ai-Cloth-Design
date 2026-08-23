@@ -193,12 +193,12 @@ export const favoriteStats = {
 };
 
 export const favoriteCollections = [
-  { id: 'c1', name: 'Best Sellers', icon: '⭐', count: 45 },
-  { id: 'c2', name: 'Luxury Collection', icon: '✨', count: 38 },
-  { id: 'c3', name: 'Streetwear', icon: '👕', count: 52 },
-  { id: 'c4', name: 'Client Favorites', icon: '💼', count: 28 },
-  { id: 'c5', name: 'Summer Collection', icon: '☀️', count: 35 },
-  { id: 'c6', name: 'Winter Collection', icon: '❄️', count: 47 },
+  { id: 'c1', name: 'Best Sellers', icon: '', count: 45 },
+  { id: 'c2', name: 'Luxury Collection', icon: '', count: 38 },
+  { id: 'c3', name: 'Streetwear', icon: '', count: 52 },
+  { id: 'c4', name: 'Client Favorites', icon: '', count: 28 },
+  { id: 'c5', name: 'Summer Collection', icon: '', count: 35 },
+  { id: 'c6', name: 'Winter Collection', icon: '', count: 47 },
 ];
 
 export const favoriteDesigns = [
@@ -328,10 +328,10 @@ export const publishedStats = {
 };
 
 export const platformOverview = [
-  { id: 'p1', name: 'Website', designs: 45, icon: '🌐' },
-  { id: 'p2', name: 'Shopify', designs: 52, icon: '🛒' },
-  { id: 'p3', name: 'Etsy', designs: 18, icon: '🎨' },
-  { id: 'p4', name: 'Instagram', designs: 41, icon: '📸' },
+  { id: 'p1', name: 'Website', designs: 45, icon: '' },
+  { id: 'p2', name: 'Shopify', designs: 52, icon: '' },
+  { id: 'p3', name: 'Etsy', designs: 18, icon: '' },
+  { id: 'p4', name: 'Instagram', designs: 41, icon: '' },
 ];
 
 export const publishedDesigns = [

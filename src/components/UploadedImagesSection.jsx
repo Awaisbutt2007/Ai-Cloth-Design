@@ -1,337 +1,334 @@
+import React, { useState, useRef } from 'react';
+import { UploadCloud, Info, FileText, ChevronDown, Image as ImageIcon, X, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
 
-import React, { useState } from 'react';
-import { 
-  Upload, Folder, Search, ChevronDown, Eye, Edit, Star, Link2, Download, Trash2, 
-  Move, Tag, X, Image as ImageIcon, FileImage, ArrowUpDown 
-} from 'lucide-react';
-
-function UploadedImagesSection({ activeSection }) {
-  const [selectedImages, setSelectedImages] = useState([]);
-  const [previewImage, setPreviewImage] = useState(null);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortBy, setSortBy] = useState('newest');
-  const [showEmptyState, setShowEmptyState] = useState(false);
-
-  const sectionId = 'assets-uploaded-images';
-  const activeId = 'uploaded-images';
+export default function UploadedImagesSection({ activeSection }) {
+  const [title, setTitle] = useState('');
+  const [category, setCategory] = useState('');
+  const [price, setPrice] = useState('');
+  const [description, setDescription] = useState('');
+  const [showGuide, setShowGuide] = useState(false);
+  const [guideStep, setGuideStep] = useState(1);
+  const [selectedFiles, setSelectedFiles] = useState([]);
+  const [isDragging, setIsDragging] = useState(false);
   
-  if (activeSection !== activeId) return null;
+  const fileInputRef = useRef(null);
 
-  const sampleImages = [
-    { id: 1, name: 'Winter Jacket Inspiration', format: 'PNG', size: '2.4 MB', uploaded: 'Today', resolution: '2048 × 2048', usedIn: 'Winter Collection', tags: ['Reference', 'Inspiration'] },
-    { id: 2, name: 'Fabric Swatch Wool', format: 'JPG', size: '1.2 MB', uploaded: 'Yesterday', resolution: '1024 × 768', usedIn: 'Winter Collection', tags: ['Fabric'] },
-    { id: 3, name: 'Brand Logo Dark', format: 'PNG', size: '0.8 MB', uploaded: '3 Days Ago', resolution: '512 × 512', usedIn: 'All', tags: ['Logo'] },
-    { id: 4, name: 'Leather Texture', format: 'WEBP', size: '3.1 MB', uploaded: '1 Week Ago', resolution: '1536 × 1024', usedIn: 'Streetwear', tags: ['Texture'] },
-    { id: 5, name: 'Summer Dress Mockup', format: 'PNG', size: '5.2 MB', uploaded: '2 Weeks Ago', resolution: '1920 × 1080', usedIn: 'Summer Collection', tags: ['Mockup'] },
-    { id: 6, name: 'Silk Texture Detail', format: 'JPG', size: '2.1 MB', uploaded: '2 Weeks Ago', resolution: '1024 × 1024', usedIn: 'Formal Wear', tags: ['Texture'] },
-  ];
+  const handleUpload = () => {
+    if (selectedFiles.length === 0) {
+      alert("Please select at least one file to upload.");
+      return;
+    }
 
-  const toggleImageSelection = (id) => {
-    setSelectedImages(prev => 
-      prev.includes(id) 
-        ? prev.filter(i => i !== id) 
-        : [...prev, id]
-    );
+    const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
+    const currentUser = 'default';
+    if (!allProfiles[currentUser]) {
+      allProfiles[currentUser] = { postImages: [] };
+    }
+    
+    const newPost = {
+      id: Date.now().toString(),
+      url: selectedFiles[0].url,
+      images: selectedFiles.map(f => f.url),
+      title: title || 'New Design',
+      category: category,
+      price: price || '0',
+      description: description,
+      date: new Date().toISOString(),
+      isNew: true
+    };
+    
+    allProfiles[currentUser].postImages = [newPost, ...(allProfiles[currentUser].postImages || [])];
+    
+    window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
+    
+    setTitle('');
+    setCategory('');
+    setPrice('');
+    setDescription('');
+    setSelectedFiles([]);
   };
 
-  const toggleFavorite = (e, id) => {
-    e.stopPropagation();
-    // Add favorite logic here
-  };
-
-  const openPreview = (image) => {
-    setPreviewImage(image);
-  };
-
-  const closePreview = () => {
-    setPreviewImage(null);
-  };
+  const activeId = 'uploaded-images';
+  if (activeSection !== activeId && activeSection !== 'Upload' && activeSection !== 'upload') return null;
 
   return (
-    <section id={sectionId} className={`section uploaded-images-section ${activeSection === activeId ? 'active' : 'hidden'}`}>
-      <div className="sub-content">
+    <section id="assets-uploaded-images" className={`section uploaded-images-section active`}>
+      <div className="upload-new-container">
         
-        {/* 1️⃣ Header */}
-        <div className="uploaded-header">
-          <div className="uploaded-header-text">
-            <h2>Uploaded Images</h2>
-            <p>Manage all your uploaded images and reference files.</p>
+        {/* Header */}
+        <div className="upload-header-row">
+          <div className="upload-header-left">
+            <div className="upload-title-icon-box">
+              <UploadCloud size={24} color="#7f58ff" />
+            </div>
+            <div className="upload-header-text">
+              <h2>Upload</h2>
+              <p>Upload your content and earn auras from the community.</p>
+            </div>
           </div>
-          <div className="uploaded-header-actions">
-            <button className="btn-primary">
-              <Upload size={18} />
-              Upload Images
-            </button>
-            <button className="btn-secondary">
-              <Folder size={18} />
-              Create Folder
-            </button>
-          </div>
+          <button className="upload-how-btn" onClick={() => { setShowGuide(true); setGuideStep(1); }}>
+            <Info size={16} />
+            How it works?
+          </button>
         </div>
 
-        {/* 2️⃣ Upload Area */}
-        <div className="upload-area-card">
-          <div className="upload-dropzone">
-            <div className="upload-icon-wrapper">
-              <FileImage size={48} />
-            </div>
-            <h3>Drop images here</h3>
-            <p>or</p>
-            <button className="btn-secondary upload-browse-btn">
-              Browse Files
-            </button>
-            <div className="upload-formats">
-              <span>PNG</span>
-              <span>JPG</span>
-              <span>JPEG</span>
-              <span>WEBP</span>
-            </div>
-            <p className="upload-note">Max 20 MB</p>
-          </div>
-        </div>
-
-        {/* 3️⃣ Storage Summary */}
-        <div className="storage-summary-grid">
-          <div className="storage-summary-card">
-            <span className="storage-summary-label">Total Images</span>
-            <strong className="storage-summary-value">{showEmptyState ? 0 : 428}</strong>
-          </div>
-          <div className="storage-summary-card">
-            <span className="storage-summary-label">Storage Used</span>
-            <strong className="storage-summary-value">{showEmptyState ? '0 GB' : '6.8 GB'}</strong>
-          </div>
-          <div className="storage-summary-card">
-            <span className="storage-summary-label">Folders</span>
-            <strong className="storage-summary-value">{showEmptyState ? 0 : 18}</strong>
-          </div>
-          <div className="storage-summary-card">
-            <span className="storage-summary-label">Recent Uploads</span>
-            <strong className="storage-summary-value">{showEmptyState ? 0 : 12}</strong>
-          </div>
-        </div>
-
-        {/* 4️⃣ Search & Filters */}
-        <div className="search-filters-card">
-          <div className="search-filters-toolbar">
-            <div className="search-filters-search">
-              <Search size={18} />
-              <input 
-                type="text" 
-                placeholder="Search Images..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-              />
-            </div>
-            <div className="search-filters-selectors">
-              <div className="filter-selector">
-                <span>Folder</span>
-                <ChevronDown size={16} />
-              </div>
-              <div className="filter-selector">
-                <span>Category</span>
-                <ChevronDown size={16} />
-              </div>
-              <div className="filter-selector">
-                <span>Date</span>
-                <ChevronDown size={16} />
-              </div>
-              <div className="filter-selector">
-                <ArrowUpDown size={16} />
-                <span>Sort</span>
-                <ChevronDown size={16} />
-              </div>
-            </div>
-          </div>
-          <div className="search-filters-tags">
-            <button className="filter-tag active">All</button>
-            <button className="filter-tag">Reference</button>
-            <button className="filter-tag">Logo</button>
-            <button className="filter-tag">Fabric</button>
-            <button className="filter-tag">Texture</button>
-            <button className="filter-tag">Inspiration</button>
-            <button className="filter-tag">Mockup</button>
-          </div>
-        </div>
-
-        {/* 7️⃣ Bulk Actions (only when images selected) */}
-        {selectedImages.length > 0 && (
-          <div className="bulk-actions-card">
-            <div className="bulk-actions-info">
-              <strong>{selectedImages.length} images selected</strong>
-              <button 
-                onClick={() => setSelectedImages([])}
-                className="bulk-actions-clear"
-              >
-                Clear
-              </button>
-            </div>
-            <div className="bulk-actions-buttons">
-              <button className="btn-secondary bulk-btn">
-                <Move size={16} />
-                Move
-              </button>
-              <button className="btn-secondary bulk-btn">
-                <Download size={16} />
-                Download
-              </button>
-              <button className="btn-secondary bulk-btn">
-                <Star size={16} />
-                Favorite
-              </button>
-              <button className="btn-secondary bulk-btn">
-                <Tag size={16} />
-                Add Tags
-              </button>
-              <button className="btn-danger bulk-btn">
-                <Trash2 size={16} />
-                Delete
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Empty State or Images Grid */}
-        {showEmptyState ? (
-          /* 9️⃣ Empty State */
-          <div className="empty-state-card">
-            <div className="empty-state-icon-wrapper">
-              <ImageIcon size={64} />
-            </div>
-            <h3>No Images Uploaded</h3>
-            <p>Upload your first reference image.</p>
-            <button className="btn-primary">
-              <Upload size={18} />
-              Upload Image
-            </button>
-          </div>
-        ) : (
-          <>
-            {/* 5️⃣ Images Grid */}
-            <div className="images-grid">
-              {sampleImages.map((image) => (
-                <div 
-                  key={image.id} 
-                  className={`image-card ${selectedImages.includes(image.id) ? 'selected' : ''}`}
-                  onClick={() => openPreview(image)}
-                >
-                  <div className="image-check">
-                    <input 
-                      type="checkbox" 
-                      checked={selectedImages.includes(image.id)}
-                      onChange={(e) => {
-                        e.stopPropagation();
-                        toggleImageSelection(image.id);
-                      }}
-                    />
-                  </div>
-                  <div className="image-preview-wrapper">
-                    <div className="image-preview" style={{
-                      backgroundImage: `url('https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=400&h=300&fit=crop')`
-                    }} />
-                  </div>
-                  <div className="image-info">
-                    <div className="image-name">{image.name}</div>
-                    <div className="image-meta">
-                      <span className="image-format">{image.format}</span>
-                      <span className="image-size">{image.size}</span>
-                      <span className="image-uploaded">{image.uploaded}</span>
-                    </div>
-                  </div>
-                  <div className="image-hover-actions">
-                    <button className="image-action-btn" title="Preview">
-                      <Eye size={16} />
-                    </button>
-                    <button className="image-action-btn" title="Rename">
-                      <Edit size={16} />
-                    </button>
-                    <button 
-                      className="image-action-btn" 
-                      title="Favorite" 
-                      onClick={(e) => toggleFavorite(e, image.id)}
-                    >
-                      <Star size={16} />
-                    </button>
-                    <button className="image-action-btn" title="Copy Link">
-                      <Link2 size={16} />
-                    </button>
-                    <button className="image-action-btn" title="Download">
-                      <Download size={16} />
-                    </button>
-                    <button className="image-action-btn danger" title="Delete">
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+        {/* Dropzone */}
+        <div 
+          className={`upload-dropzone-box ${isDragging ? 'drag-active' : ''}`}
+          onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+          onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }}
+          onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+              const filesArray = Array.from(e.dataTransfer.files).map((file) => ({
+                file,
+                url: URL.createObjectURL(file),
+              }));
+              setSelectedFiles((prev) => [...prev, ...filesArray]);
+            }
+          }}
+        >
+          {selectedFiles.length > 0 ? (
+            <div className="selected-files-row">
+              {selectedFiles.map((item, index) => (
+                <div key={index} className="selected-file-item">
+                  {item.file.type.startsWith('video/') ? (
+                    <video src={item.url} className="selected-file-preview" />
+                  ) : (
+                    <img src={item.url} alt="preview" className="selected-file-preview" />
+                  )}
+                  <button 
+                    className="remove-file-btn"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedFiles(prev => prev.filter((_, i) => i !== index));
+                      URL.revokeObjectURL(item.url);
+                    }}
+                  >
+                    <X size={14} />
+                  </button>
                 </div>
               ))}
+              <button className="add-more-files-btn" onClick={() => fileInputRef.current?.click()}>
+                <UploadCloud size={24} color="#7f58ff" />
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                style={{ display: 'none' }} 
+                multiple
+                accept="image/png, image/jpeg, image/webp, image/gif, video/mp4"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    const filesArray = Array.from(e.target.files).map((file) => ({
+                      file,
+                      url: URL.createObjectURL(file),
+                    }));
+                    setSelectedFiles((prev) => [...prev, ...filesArray]);
+                  }
+                  e.target.value = '';
+                }}
+              />
             </div>
-          </>
-        )}
+          ) : (
+            <div className="dropzone-content">
+              <UploadCloud size={48} color="#7f58ff" className="dropzone-icon" />
+              <h3>Drag & Drop your file here</h3>
+              <p className="dropzone-or">or</p>
+              <button className="dropzone-choose-btn" onClick={() => fileInputRef.current?.click()}>
+                Choose File
+              </button>
+              <input 
+                type="file" 
+                ref={fileInputRef} 
+                style={{ display: 'none' }} 
+                multiple
+                accept="image/png, image/jpeg, image/webp, image/gif, video/mp4"
+                onChange={(e) => {
+                  if (e.target.files) {
+                    const filesArray = Array.from(e.target.files).map((file) => ({
+                      file,
+                      url: URL.createObjectURL(file),
+                    }));
+                    setSelectedFiles((prev) => [...prev, ...filesArray]);
+                  }
+                  e.target.value = '';
+                }}
+              />
+              <p className="dropzone-formats">Supported formats: JPG, PNG, MP4, GIF, WEBP (Max 50MB)</p>
+            </div>
+          )}
+        </div>
 
-        {/* 8️⃣ Storage Usage */}
-        <div className="storage-usage-card">
-          <div className="storage-usage-header">
-            <h3>Storage</h3>
-            <button className="btn-primary">Upgrade Storage</button>
+        {/* Details Panel */}
+        <div className="upload-details-panel">
+          <div className="details-header">
+            <FileText size={18} color="#7f58ff" />
+            <h3>Upload Details</h3>
           </div>
-          <div className="storage-usage-info">
-            <span className="storage-usage-count">{showEmptyState ? '0 GB' : '6.8 GB'} / 20 GB</span>
-            <div className="storage-usage-progress">
-              <div className="storage-usage-fill" style={{ width: showEmptyState ? '0%' : '34%' }} />
+
+          <div className="details-form">
+            <div className="form-group" style={{ marginBottom: '24px' }}>
+              <label>Title</label>
+              <input 
+                type="text" 
+                placeholder="Enter a catchy title" 
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+              />
+            </div>
+            
+            <div className="details-row-2">
+              <div className="form-group">
+                <label>Category</label>
+                <div className="select-wrapper">
+                  <select 
+                    value={category} 
+                    onChange={(e) => setCategory(e.target.value)}
+                    className="theme-select"
+                  >
+                    <option value="" disabled>Select Category</option>
+                    <option value="fashion">Fashion</option>
+                    <option value="design">Design</option>
+                    <option value="texture">Texture</option>
+                  </select>
+                  <ChevronDown size={16} className="select-icon" />
+                </div>
+              </div>
+
+              <div className="form-group">
+                <label>Price ($)</label>
+                <input 
+                  type="number" 
+                  placeholder="e.g. 29.99" 
+                  value={price}
+                  onChange={(e) => setPrice(e.target.value)}
+                  min="0"
+                  step="0.01"
+                />
+              </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '24px' }}>
+              <label>Description</label>
+              <div className="textarea-wrapper">
+                <textarea 
+                  placeholder="Describe your content..."
+                  value={description}
+                  onChange={(e) => setDescription(e.target.value)}
+                  maxLength={500}
+                ></textarea>
+                <span className="char-count">{description.length}/500</span>
+              </div>
+            </div>
+            
+            <div className="upload-actions-row">
+              <button 
+                className="upload-reset-btn"
+                onClick={() => {
+                  setTitle('');
+                  setCategory('');
+                  setPrice('');
+                  setDescription('');
+                  setSelectedFiles([]);
+                }}
+              >
+                Reset
+              </button>
+              <button className="upload-submit-btn" onClick={handleUpload}>
+                <UploadCloud size={18} />
+                Upload
+              </button>
             </div>
           </div>
         </div>
 
-        {/* 6️⃣ Image Preview Drawer */}
-        {previewImage && (
-          <div className="image-preview-overlay" onClick={closePreview}>
-            <div className="image-preview-drawer" onClick={(e) => e.stopPropagation()}>
-              <button className="drawer-close-btn" onClick={closePreview}>
+        {/* Guide Modal */}
+        {showGuide && (
+          <div className="upload-guide-modal-overlay">
+            <div className="upload-guide-modal">
+              <button className="guide-close-btn" onClick={() => setShowGuide(false)}>
                 <X size={20} />
               </button>
-              <div className="drawer-content">
-                <div className="drawer-image-wrapper">
-                  <div className="drawer-image" style={{
-                    backgroundImage: `url('https://images.unsplash.com/photo-1485921325833-c519f76c4927?w=800&h=600&fit=crop')`
-                  }} />
-                </div>
-                <div className="drawer-details">
-                  <h3>File Name</h3>
-                  <p>{previewImage.name.toLowerCase().replace(/ /g, '-')}.png</p>
-                  
-                  <h3>Size</h3>
-                  <p>{previewImage.size}</p>
-                  
-                  <h3>Resolution</h3>
-                  <p>{previewImage.resolution}</p>
-                  
-                  <h3>Format</h3>
-                  <p>{previewImage.format}</p>
-                  
-                  <h3>Upload Date</h3>
-                  <p>{previewImage.uploaded === 'Today' ? '10 Jul 2026' : previewImage.uploaded}</p>
-                  
-                  <h3>Used In</h3>
-                  <p>{previewImage.usedIn}</p>
-                  
-                  <div className="drawer-buttons">
-                    <button className="btn-secondary drawer-btn">
-                      <Download size={16} />
-                      Download
-                    </button>
-                    <button className="btn-secondary drawer-btn">
-                      <Edit size={16} />
-                      Rename
-                    </button>
-                    <button className="btn-secondary drawer-btn">
-                      <Upload size={16} />
-                      Replace
-                    </button>
-                    <button className="btn-danger drawer-btn">
-                      <Trash2 size={16} />
-                      Delete
-                    </button>
+              
+              <div className="guide-modal-content">
+                {guideStep === 1 && (
+                  <div className="guide-step animate-slide-in">
+                    <div className="guide-icon-box">
+                      <UploadCloud size={48} color="#7f58ff" />
+                    </div>
+                    <h3>Step 1: Upload Any Images</h3>
+                    <p>Start by selecting or dragging and dropping your fashion designs or texture files into the dropzone.</p>
+                    
+                    <div className="guide-footer">
+                      <div className="guide-dots">
+                        <span className="dot active"></span>
+                        <span className="dot"></span>
+                        <span className="dot"></span>
+                      </div>
+                      <div className="guide-actions">
+                        <button className="guide-next-btn" onClick={() => setGuideStep(2)}>
+                          Next <ArrowRight size={16} />
+                        </button>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                )}
+
+                {guideStep === 2 && (
+                  <div className="guide-step animate-slide-in">
+                    <div className="guide-icon-box">
+                      <FileText size={48} color="#7f58ff" />
+                    </div>
+                    <h3>Step 2: Add Details</h3>
+                    <p>Provide a catchy title, select an appropriate category, and add a descriptive text for your upload.</p>
+                    
+                    <div className="guide-footer">
+                      <div className="guide-dots">
+                        <span className="dot"></span>
+                        <span className="dot active"></span>
+                        <span className="dot"></span>
+                      </div>
+                      <div className="guide-actions">
+                        <button className="guide-prev-btn" onClick={() => setGuideStep(1)}>
+                          <ArrowLeft size={16} /> Previous
+                        </button>
+                        <button className="guide-next-btn" onClick={() => setGuideStep(3)}>
+                          Next <ArrowRight size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {guideStep === 3 && (
+                  <div className="guide-step animate-slide-in">
+                    <div className="guide-icon-box">
+                      <CheckCircle size={48} color="#7f58ff" />
+                    </div>
+                    <h3>Step 3: Ready to Upload</h3>
+                    <p>After filling everything, click the Upload button to publish your content and earn auras!</p>
+                    
+                    <div className="guide-footer">
+                      <div className="guide-dots">
+                        <span className="dot"></span>
+                        <span className="dot"></span>
+                        <span className="dot active"></span>
+                      </div>
+                      <div className="guide-actions">
+                        <button className="guide-prev-btn" onClick={() => setGuideStep(2)}>
+                          <ArrowLeft size={16} /> Previous
+                        </button>
+                        <button className="guide-next-btn finish-btn" onClick={() => setShowGuide(false)}>
+                          Got it!
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -341,5 +338,3 @@ function UploadedImagesSection({ activeSection }) {
     </section>
   );
 }
-
-export default UploadedImagesSection;
