@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { designs, repairAllLocalPosts } from './constants';
+import { designs } from './constants';
 import { Check, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Topbar from './components/Topbar';
@@ -38,6 +38,7 @@ import Login from './components/Login';
 import WelcomeOverlay from './components/WelcomeOverlay';
 import InboxSection from './components/InboxSection';
 import ProductDetailsSection from './components/ProductDetailsSection';
+import { fetchPosts } from './lib/posts';
 
 function initGlobalSeedPosts() {
   const key = 'aifashionGlobalPosts';
@@ -174,7 +175,6 @@ function App() {
     return window.localStorage.getItem('aifashionDarkMode') === 'true';
   });
   const [activeSection, setActiveSection] = useState(() => {
-    initGlobalSeedPosts();
     return window.localStorage.getItem('aifashionActiveSection') || 'profile';
   });
   const [isSectionLoading, setIsSectionLoading] = useState(false);
@@ -222,6 +222,7 @@ function App() {
   const toastIdRef = useRef(0);
   const toastTimerRef = useRef({});
   const [postsRefreshTick, setPostsRefreshTick] = useState(0);
+  const [sharedPosts, setSharedPosts] = useState(null);
 
   const topSearchRef = useRef(null);
   const sidebarSearchRef = useRef(null);
@@ -286,6 +287,26 @@ function App() {
       window.removeEventListener('storage', refreshPosts);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+    let cancelled = false;
+    const loadPosts = async () => {
+      try {
+        const posts = await fetchPosts();
+        if (!cancelled) setSharedPosts(posts);
+      } catch (error) {
+        console.error('Posts could not be loaded:', error);
+        if (!cancelled) setSharedPosts([]);
+      }
+    };
+    loadPosts();
+    window.addEventListener('aifashion-posts-updated', loadPosts);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('aifashion-posts-updated', loadPosts);
+    };
+  }, [isLoggedIn]);
 
   function removeToast(id) {
     setToastList((current) => current.map((toast) => (
@@ -575,12 +596,14 @@ function App() {
             activeSection={activeSection}
             handleSectionClick={handleSectionClick}
             handleProductClick={handleProductClick}
+            posts={sharedPosts}
           />
 
           <AllUserPostsSection
             activeSection={activeSection}
             handleProductClick={handleProductClick}
             postsRefreshTick={postsRefreshTick}
+            posts={sharedPosts}
           />
 
           <AISection activeSection={activeSection} />

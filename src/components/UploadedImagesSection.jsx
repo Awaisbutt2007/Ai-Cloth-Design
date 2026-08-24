@@ -14,6 +14,7 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
   const [uploading, setUploading] = useState(false);
 
   const fileInputRef = useRef(null);
+  const uploadInProgressRef = useRef(false);
 
   const getCurrentUserKey = () => {
     const stored = window.localStorage.getItem('aifashionUserProfile');
@@ -28,11 +29,13 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
   };
 
   const handleUpload = async () => {
+    if (uploadInProgressRef.current) return;
     if (selectedFiles.length === 0) {
       onUploadError?.('Please select at least one file to upload.');
       return;
     }
 
+    uploadInProgressRef.current = true;
     setUploading(true);
 
     try {
@@ -71,6 +74,7 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
       console.error('Upload error:', err);
       onUploadError?.(`Upload failed: ${err?.message || 'Please try again.'}`);
     } finally {
+      uploadInProgressRef.current = false;
       setUploading(false);
     }
   };

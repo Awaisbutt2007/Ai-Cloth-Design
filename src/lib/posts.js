@@ -3,6 +3,7 @@ import { supabase } from './supabaseClient';
 const bucketName = 'fashion-posts';
 
 export async function uploadPost({ files, title, category, price, description, authorEmail, authorName, authorHandle }) {
+  if (!files?.length) throw new Error('Please select at least one image.');
   const uploadedImages = [];
 
   for (const file of files) {
@@ -44,10 +45,28 @@ export async function fetchPosts() {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map((post) => ({
+  const mergedPosts = new Map();
+  for (const post of data || []) {
+    const mergeKey = [
+      post.author_email || '',
+      post.title || '',
+      post.category || '',
+      post.price || 0,
+      post.description || '',
+    ].join('|');
+    const existing = mergedPosts.get(mergeKey);
+    if (!existing) {
+      mergedPosts.set(mergeKey, { ...post, images: Array.isArray(post.images) ? post.images : [post.image_url] });
+      continue;
+    }
+    existing.images = [...existing.images, ...(Array.isArray(post.images) ? post.images : [post.image_url])]
+      .filter((image, index, images) => image && !images.slice(0, index).includes(image));
+  }
+
+  return [...mergedPosts.values()].map((post) => ({
     ...post,
     url: post.image_url,
-    images: Array.isArray(post.images) ? post.images : [post.image_url],
+    images: post.images,
     date: post.created_at,
     isNew: true,
     views: post.views || 0,

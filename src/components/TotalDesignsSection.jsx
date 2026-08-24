@@ -37,9 +37,9 @@ function getAllPosts() {
   return result;
 }
 
-function TotalDesignsSection({ activeSection, handleSectionClick, handleProductClick, posts = [] }) {
+function TotalDesignsSection({ activeSection, handleSectionClick, handleProductClick, posts }) {
 
-  const allPosts = posts.length > 0 ? posts : getAllPosts();
+  const allPosts = posts || [];
   const quickActions = [
     { title: 'AI Stylist', desc: 'Get outfit recommendations tailored for you', icon: Sparkles },
     { title: 'Virtual Try-On', desc: 'Try outfits virtually before you buy', icon: Shirt },
