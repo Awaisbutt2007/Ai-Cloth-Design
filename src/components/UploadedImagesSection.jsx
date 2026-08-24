@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Info, FileText, ChevronDown, Image as ImageIcon, X, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
+import { uploadPost } from '../lib/posts';
 
 export default function UploadedImagesSection({ activeSection, userEmail, onUploadSuccess, onUploadError }) {
   const [title, setTitle] = useState('');
@@ -14,19 +15,6 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
 
   const fileInputRef = useRef(null);
 
-  const fileToBase64 = (file) => {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => resolve(reader.result);
-      reader.onerror = reject;
-      if (file.type.startsWith('image/')) {
-        reader.readAsDataURL(file);
-      } else {
-        reader.readAsDataURL(file);
-      }
-    });
-  };
-
   const getCurrentUserKey = () => {
     const stored = window.localStorage.getItem('aifashionUserProfile');
     if (stored) {
@@ -39,27 +27,6 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
     return 'default';
   };
 
-  const saveToGlobalPosts = (newPost) => {
-    const globalKey = 'aifashionGlobalPosts';
-    let globalPosts = [];
-    try {
-      const existing = window.localStorage.getItem(globalKey);
-      if (existing) globalPosts = JSON.parse(existing);
-    } catch (e) {}
-    globalPosts.unshift(newPost);
-    window.localStorage.setItem(globalKey, JSON.stringify(globalPosts));
-  };
-
-  const saveToProfileStats = (newPost, userKey) => {
-    const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
-    if (!allProfiles[userKey]) {
-      allProfiles[userKey] = { posts: 0, followers: 0, following: 0, postImages: [] };
-    }
-    allProfiles[userKey].postImages = [newPost, ...(allProfiles[userKey].postImages || [])];
-    allProfiles[userKey].posts = (allProfiles[userKey].posts || 0) + 1;
-    window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
-  };
-
   const handleUpload = async () => {
     if (selectedFiles.length === 0) {
       onUploadError?.('Please select at least one file to upload.');
@@ -69,16 +36,6 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
     setUploading(true);
 
     try {
-      const base64Images = [];
-      for (const f of selectedFiles) {
-        try {
-          const b64 = await fileToBase64(f.file);
-          base64Images.push(b64);
-        } catch (e) {
-          base64Images.push(f.url);
-        }
-      }
-
       const userKey = getCurrentUserKey();
       const storedProfile = window.localStorage.getItem('aifashionUserProfile');
       let authorName = 'Anonymous';
@@ -91,25 +48,16 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
         } catch (e) {}
       }
 
-      const newPost = {
-        id: Date.now().toString() + '-' + Math.random().toString(36).slice(2, 8),
-        url: base64Images[0],
-        images: base64Images,
-        title: title || 'New Design',
-        category: category,
-        price: price || '0',
-        description: description,
-        date: new Date().toISOString(),
-        isNew: true,
-        views: 0,
-        shares: 0,
+      await uploadPost({
+        files: selectedFiles.map((item) => item.file),
+        title,
+        category,
+        price,
+        description,
         authorEmail: userKey,
-        authorName: authorName,
-        authorHandle: authorHandle,
-      };
-
-      saveToGlobalPosts(newPost);
-      saveToProfileStats(newPost, userKey);
+        authorName,
+        authorHandle,
+      });
       window.dispatchEvent(new Event('aifashion-posts-updated'));
 
       setTitle('');

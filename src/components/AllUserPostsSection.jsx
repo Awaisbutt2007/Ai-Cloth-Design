@@ -37,9 +37,9 @@ function getAllPosts() {
   return result;
 }
 
-function AllUserPostsSection({ activeSection, handleProductClick, postsRefreshTick }) {
+function AllUserPostsSection({ activeSection, handleProductClick, postsRefreshTick, posts = [] }) {
   void postsRefreshTick;
-  const allPosts = getAllPosts();
+  const allPosts = posts.length > 0 ? posts : getAllPosts();
 
   return (
     <section id="all-user-posts" className={`section ${(activeSection === 'all-user-posts') ? 'active' : 'hidden'}`}>
