@@ -166,7 +166,7 @@ function Login({ onLogin }) {
           name: userInfo.name || 'Google User',
           email: userInfo.email,
           handle: `@${handleString}`,
-          password: `GoogleAuth!${randomNum}`,
+          password: `GoogleAuth!${Math.floor(100000 + Math.random() * 900000)}`,
           phone: ''
         };
 

@@ -1,6 +1,42 @@
 import { supabase } from './supabaseClient';
 
 const bucketName = 'fashion-posts';
+const seedAuthorEmails = new Set(['awais@aifashion.com', 'sara@fashion.com', 'zain@studio.com']);
+
+function isSeedPost(post) {
+  return typeof post === 'object' && String(post.id || '').startsWith('seed-');
+}
+
+export function purgeLocalUserPosts() {
+  const removedIds = new Set(JSON.parse(window.localStorage.getItem('aifashionRemovedPostIds') || '[]'));
+  const removeUserPosts = (posts) => (Array.isArray(posts) ? posts.filter((post) => {
+    if (isSeedPost(post)) return true;
+    const postId = typeof post === 'object' ? (post.id || post.url || post.title) : post;
+    if (postId) removedIds.add(postId);
+    return false;
+  }) : []);
+
+  try {
+    const globalPosts = JSON.parse(window.localStorage.getItem('aifashionGlobalPosts') || '[]');
+    window.localStorage.setItem('aifashionGlobalPosts', JSON.stringify(removeUserPosts(globalPosts)));
+  } catch (e) {}
+
+  try {
+    const profiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
+    for (const profile of Object.values(profiles)) {
+      profile.postImages = removeUserPosts(profile.postImages);
+      profile.posts = profile.postImages.length;
+    }
+    window.localStorage.setItem('aifashionProfileStats', JSON.stringify(profiles));
+  } catch (e) {}
+
+  try {
+    const recentlyViewed = JSON.parse(window.localStorage.getItem('aifashionRecentlyViewed') || '[]');
+    window.localStorage.setItem('aifashionRecentlyViewed', JSON.stringify(removeUserPosts(recentlyViewed)));
+  } catch (e) {}
+
+  window.localStorage.setItem('aifashionRemovedPostIds', JSON.stringify([...removedIds]));
+}
 
 export async function uploadPost({ files, title, category, price, description, authorEmail, authorName, authorHandle }) {
   if (!files?.length) throw new Error('Please select at least one image.');
@@ -46,7 +82,8 @@ export async function fetchPosts() {
 
   if (error) throw error;
   const mergedPosts = new Map();
-  for (const post of data || []) {
+  const removedPostIds = new Set(JSON.parse(window.localStorage.getItem('aifashionRemovedPostIds') || '[]'));
+  for (const post of (data || []).filter((post) => !removedPostIds.has(post.id))) {
     const mergeKey = [
       post.author_email || '',
       post.title || '',
@@ -72,4 +109,33 @@ export async function fetchPosts() {
     views: post.views || 0,
     shares: post.shares || 0,
   }));
+}
+
+export async function purgeUserUploadedPosts() {
+  const { data, error } = await supabase
+    .from('posts')
+    .select('id, author_email');
+
+  if (error) throw error;
+  const userPosts = (data || []).filter((post) => post.author_email && !seedAuthorEmails.has(post.author_email));
+  const removedIds = new Set(JSON.parse(window.localStorage.getItem('aifashionRemovedPostIds') || '[]'));
+
+  for (const post of userPosts) {
+    removedIds.add(post.id);
+    const { error: deleteError } = await supabase.from('posts').delete().eq('id', post.id);
+    if (deleteError) console.error('User post could not be deleted from Supabase:', deleteError);
+  }
+
+  window.localStorage.setItem('aifashionRemovedPostIds', JSON.stringify([...removedIds]));
+  return userPosts.length;
+}
+
+export async function deletePost(postId) {
+  if (!postId) return;
+  const { error } = await supabase
+    .from('posts')
+    .delete()
+    .eq('id', postId);
+
+  if (error) throw error;
 }

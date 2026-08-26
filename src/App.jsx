@@ -2,7 +2,6 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { designs } from './constants';
 import { Check, AlertCircle, AlertTriangle, X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
-import Topbar from './components/Topbar';
 import ProfileSection from './components/ProfileSection';
 import CreateSection from './components/CreateSection';
 import DashboardSection from './components/DashboardSection';
@@ -38,7 +37,8 @@ import Login from './components/Login';
 import WelcomeOverlay from './components/WelcomeOverlay';
 import InboxSection from './components/InboxSection';
 import ProductDetailsSection from './components/ProductDetailsSection';
-import { fetchPosts } from './lib/posts';
+import RecentlyViewedSection from './components/RecentlyViewedSection';
+import { fetchPosts, purgeLocalUserPosts, purgeUserUploadedPosts } from './lib/posts';
 
 function initGlobalSeedPosts() {
   const key = 'aifashionGlobalPosts';
@@ -167,7 +167,8 @@ function initGlobalSeedPosts() {
 }
 
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(window.localStorage.getItem('aifashionUserProfile')));
+  const [isAuthRestoring, setIsAuthRestoring] = useState(true);
   const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
   const [welcomeExiting, setWelcomeExiting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('Ready-to-Wear');
@@ -216,7 +217,13 @@ function App() {
     { id: 2, name: 'Jacket', product: 'Jacket', date: 'Yesterday', status: 'Completed' },
   ]);
   const [selectedDesign, setSelectedDesign] = useState(null);
-  const [selectedProduct, setSelectedProduct] = useState(null);
+  const [selectedProduct, setSelectedProduct] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem('aifashionSelectedProduct') || 'null');
+    } catch {
+      return null;
+    }
+  });
 
   const [toastList, setToastList] = useState([]);
   const toastIdRef = useRef(0);
@@ -235,16 +242,22 @@ function App() {
   useEffect(() => {
     const stored = window.localStorage.getItem('aifashionUserProfile');
     if (stored) {
-      const profile = JSON.parse(stored);
-      setSavedProfile(profile);
-      setUserName(profile.name || '');
-      setUserEmail(profile.email || '');
-      setUserPhone(profile.phone || '');
-      setUserPassword(profile.password || '');
-      setUserPhoto(profile.photo || null);
-      setUserHandle(profile.handle || '@fashionista_ai');
-      setUserBio(profile.bio || '');
+      try {
+        const profile = JSON.parse(stored);
+        setSavedProfile(profile);
+        setUserName(profile.name || '');
+        setUserEmail(profile.email || '');
+        setUserPhone(profile.phone || '');
+        setUserPassword(profile.password || '');
+        setUserPhoto(profile.photo || null);
+        setUserHandle(profile.handle || '@fashionista_ai');
+        setUserBio(profile.bio || '');
+      } catch {
+        window.localStorage.removeItem('aifashionUserProfile');
+        setIsLoggedIn(false);
+      }
     }
+    setIsAuthRestoring(false);
   }, []);
 
   useEffect(() => {
@@ -293,6 +306,15 @@ function App() {
     let cancelled = false;
     const loadPosts = async () => {
       try {
+        if (!window.localStorage.getItem('aifashionLocalUserPostsPurged')) {
+          purgeLocalUserPosts();
+          window.localStorage.setItem('aifashionLocalUserPostsPurged', 'true');
+        }
+        if (!window.localStorage.getItem('aifashionUserPostsPurged')) {
+          await purgeUserUploadedPosts();
+          window.localStorage.setItem('aifashionUserPostsPurged', 'true');
+          window.dispatchEvent(new Event('aifashion-posts-updated'));
+        }
         const posts = await fetchPosts();
         if (!cancelled) setSharedPosts(posts);
       } catch (error) {
@@ -452,6 +474,23 @@ function App() {
     });
   }
 
+  function handleLogout() {
+    setIsLoggedIn(false);
+    setShowWelcomeOverlay(false);
+    setWelcomeExiting(false);
+    setSavedProfile(null);
+    setUserName('');
+    setUserEmail('');
+    setUserPhone('');
+    setUserPassword('');
+    setUserPhoto(null);
+    setUserHandle('@fashionista_ai');
+    setUserBio('');
+    window.localStorage.removeItem('aifashionUserProfile');
+    setActiveSection('profile');
+    window.localStorage.setItem('aifashionActiveSection', 'profile');
+  }
+
   function handleProductClick(product) {
     let currentProduct = product;
     const productId = typeof product === 'object' ? (product.id || product.url || product.title) : product;
@@ -510,6 +549,7 @@ function App() {
     window.localStorage.setItem('aifashionRecentlyViewed', JSON.stringify(recentlyViewed));
     
     setSelectedProduct(currentProduct);
+    window.localStorage.setItem('aifashionSelectedProduct', JSON.stringify(currentProduct));
     setActiveSection('product-details');
     window.localStorage.setItem('aifashionActiveSection', 'product-details');
     window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -531,6 +571,10 @@ function App() {
     }, 520);
   }
 
+  if (isAuthRestoring) {
+    return <div className="auth-restore-screen" role="status" aria-label="Restoring your session"><div className="auth-restore-spinner" /><p>Restoring your fashion workspace...</p></div>;
+  }
+
   if (!isLoggedIn) {
     return <Login onLogin={handleLogin} />;
   }
@@ -547,14 +591,6 @@ function App() {
       />
 
       <div className="content-area">
-        <Topbar
-          topSearch={topSearch}
-          setTopSearch={setTopSearch}
-          topSearchRef={topSearchRef}
-          darkMode={darkMode}
-          setDarkMode={setDarkMode}
-        />
-
         <div className="content-scroll">
           {isSectionLoading && (
             <div className="section-loader-overlay">
@@ -579,6 +615,7 @@ function App() {
             setUserBio={setUserBio}
             handleSectionClick={handleSectionClick}
             handleProductClick={handleProductClick}
+            onLogout={handleLogout}
           />
 
           <CreateSection activeSection={activeSection} />
@@ -597,6 +634,12 @@ function App() {
             handleSectionClick={handleSectionClick}
             handleProductClick={handleProductClick}
             posts={sharedPosts}
+          />
+
+          <RecentlyViewedSection
+            activeSection={activeSection}
+            handleSectionClick={handleSectionClick}
+            handleProductClick={handleProductClick}
           />
 
           <AllUserPostsSection

@@ -193,10 +193,11 @@ function TotalDesignsSection({ activeSection, handleSectionClick, handleProductC
         <div className="overview-section" style={{ marginTop: '40px' }}>
           <div className="overview-section-header">
             <h2 className="overview-section-title">Recently Viewed</h2>
+            <button className="view-all-link" onClick={(e) => handleSectionClick(e, 'recently-viewed')}>View All</button>
           </div>
           <div className="trending-looks-grid">
             {recentlyViewed.length > 0 ? (
-              recentlyViewed.map((post, idx) => {
+              recentlyViewed.slice(0, 4).map((post, idx) => {
                 const rawImgSrc = typeof post === 'string' ? post : post.url;
                 const imgSrc = repairImageUrl(rawImgSrc);
                 const title = typeof post === 'string' ? `Custom Design` : (post.title || `Custom Design`);

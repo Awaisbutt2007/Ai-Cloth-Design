@@ -158,7 +158,13 @@ function Sidebar({
           </div>
           <h4 className="premium-title">Upgrade to Premium</h4>
           <p className="premium-desc">Unlock all features and get more AI credits</p>
-          <button className="premium-upgrade-btn">Upgrade Now</button>
+          <button
+            type="button"
+            className="premium-upgrade-btn"
+            onClick={(event) => handleSectionClick(event, 'subscription')}
+          >
+            Upgrade Now
+          </button>
         </div>
       </div>
     </aside>

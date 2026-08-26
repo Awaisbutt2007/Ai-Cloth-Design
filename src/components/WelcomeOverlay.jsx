@@ -8,7 +8,7 @@ function WelcomeOverlay({ exiting, onContinue }) {
     >
       <h1 id="welcome-title" className="welcome-simple-title">AI Fashion Design</h1>
       <p className="welcome-simple-desc">
-        AI fashion design uses smart computer tools and text prompts to turn creative ideas into digital clothing drawings, realistic fabric patterns, and virtual clothing lines in seconds.
+        We scan your face to understand your features and recommend fashion styles that complement your look, personality, and proportions.
       </p>
       <button
         type="button"
