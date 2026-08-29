@@ -38,7 +38,7 @@ export function purgeLocalUserPosts() {
   window.localStorage.setItem('aifashionRemovedPostIds', JSON.stringify([...removedIds]));
 }
 
-export async function uploadPost({ files, title, category, price, description, authorEmail, authorName, authorHandle }) {
+export async function uploadPost({ files, title, category, price, description, stock, authorEmail, authorName, authorHandle }) {
   if (!files?.length) throw new Error('Please select at least one image.');
   const uploadedImages = [];
 
@@ -54,21 +54,32 @@ export async function uploadPost({ files, title, category, price, description, a
     uploadedImages.push(data.publicUrl);
   }
 
-  const { data: post, error: postError } = await supabase
-    .from('posts')
-    .insert({
-      title: title || 'New Design',
-      category: category || null,
-      price: price ? Number(price) : 0,
-      description: description || null,
-      image_url: uploadedImages[0],
-      images: uploadedImages,
-      author_email: authorEmail || null,
-      author_name: authorName || 'Anonymous',
-      author_handle: authorHandle || '@user',
-    })
-    .select()
-    .single();
+  const row = {
+    title: title || 'New Design',
+    category: category || null,
+    price: price ? Number(price) : 0,
+    description: description || null,
+    image_url: uploadedImages[0],
+    images: uploadedImages,
+    author_email: authorEmail || null,
+    author_name: authorName || 'Anonymous',
+    author_handle: authorHandle || '@user',
+    stock: Number(stock) > 0 ? Number(stock) : 0,
+  };
+
+  let { data: post, error: postError } = await supabase
+    .from('posts').insert(row).select().single();
+
+  // `stock` was added later — fall back gracefully if the column isn't there yet
+  // so uploads keep working until supabase-schema.sql has been re-run.
+  if (postError && /stock/i.test(postError.message || '')) {
+    const { stock: _dropped, ...withoutStock } = row;
+    ({ data: post, error: postError } = await supabase
+      .from('posts').insert(withoutStock).select().single());
+    if (!postError) {
+      console.warn('posts.stock column is missing — run supabase-schema.sql to store stock counts.');
+    }
+  }
 
   if (postError) throw postError;
   return post;

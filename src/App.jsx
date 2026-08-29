@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { designs } from './constants';
-import { Check, AlertCircle, AlertTriangle, X } from 'lucide-react';
+import { Check, AlertCircle, AlertTriangle, X, Menu } from 'lucide-react';
 import Sidebar from './components/Sidebar';
+import OfflineBanner from './components/OfflineBanner';
+import SearchExploreSection from './components/SearchExploreSection';
+import AddToCartSection from './components/AddToCartSection';
 import ProfileSection from './components/ProfileSection';
 import CreateSection from './components/CreateSection';
 import DashboardSection from './components/DashboardSection';
@@ -230,6 +233,10 @@ function App() {
   const toastTimerRef = useRef({});
   const [postsRefreshTick, setPostsRefreshTick] = useState(0);
   const [sharedPosts, setSharedPosts] = useState(null);
+  // Open by default on desktop, closed on phones/tablets.
+  const [isSidebarOpen, setIsSidebarOpen] = useState(
+    () => typeof window !== 'undefined' && window.innerWidth > 1024,
+  );
 
   const topSearchRef = useRef(null);
   const sidebarSearchRef = useRef(null);
@@ -329,6 +336,31 @@ function App() {
       window.removeEventListener('aifashion-posts-updated', loadPosts);
     };
   }, [isLoggedIn]);
+
+  // Shrinking to a narrow viewport always collapses the sidebar back to a drawer.
+  useEffect(() => {
+    const onResize = () => {
+      if (window.innerWidth <= 1024) setIsSidebarOpen(false);
+    };
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  // Escape closes the drawer only while it is overlaying the page.
+  useEffect(() => {
+    if (!isSidebarOpen) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape' && window.innerWidth <= 1024) setIsSidebarOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [isSidebarOpen]);
+
+  function handleSidebarNavigate(event, section) {
+    // On desktop the sidebar is permanent; only the mobile drawer closes on navigate.
+    if (window.innerWidth <= 1024) setIsSidebarOpen(false);
+    handleSectionClick(event, section);
+  }
 
   function removeToast(id) {
     setToastList((current) => current.map((toast) => (
@@ -581,13 +613,31 @@ function App() {
 
   return (
     <>
-    <div className="app-shell">
+    <OfflineBanner />
+    <div className={`app-shell ${isSidebarOpen ? 'sidebar-open' : ''}`}>
+      <button
+        type="button"
+        className="mobile-nav-toggle"
+        onClick={() => setIsSidebarOpen((open) => !open)}
+        aria-label={isSidebarOpen ? 'Close navigation' : 'Open navigation'}
+        aria-expanded={isSidebarOpen}
+      >
+        {isSidebarOpen ? <X size={20} /> : <Menu size={20} />}
+      </button>
+
+      <div
+        className="sidebar-backdrop"
+        onClick={() => setIsSidebarOpen(false)}
+        aria-hidden="true"
+      />
+
       <Sidebar
         activeSection={activeSection}
-        handleSectionClick={handleSectionClick}
+        handleSectionClick={handleSidebarNavigate}
         sidebarSearch={sidebarSearch}
         setSidebarSearch={setSidebarSearch}
         sidebarSearchRef={sidebarSearchRef}
+        onCloseSidebar={() => setIsSidebarOpen(false)}
       />
 
       <div className="content-area">
@@ -599,6 +649,21 @@ function App() {
             </div>
           )}
           <InboxSection activeSection={activeSection} />
+
+          <SearchExploreSection
+            activeSection={activeSection}
+            handleProductClick={handleProductClick}
+            handleSectionClick={handleSectionClick}
+            onNotify={(message) => showToast(message, 'success')}
+            posts={sharedPosts}
+          />
+
+          <AddToCartSection
+            activeSection={activeSection}
+            handleSectionClick={handleSectionClick}
+            handleProductClick={handleProductClick}
+            onNotify={(message) => showToast(message, 'success')}
+          />
 
           <ProfileSection
             activeSection={activeSection}
@@ -616,9 +681,10 @@ function App() {
             handleSectionClick={handleSectionClick}
             handleProductClick={handleProductClick}
             onLogout={handleLogout}
+            posts={sharedPosts}
           />
 
-          <CreateSection activeSection={activeSection} />
+          <CreateSection activeSection={activeSection} posts={sharedPosts} handleProductClick={handleProductClick} />
 
           <WorkspaceSection activeSection={activeSection} />
 
@@ -645,6 +711,7 @@ function App() {
           <AllUserPostsSection
             activeSection={activeSection}
             handleProductClick={handleProductClick}
+            handleSectionClick={handleSectionClick}
             postsRefreshTick={postsRefreshTick}
             posts={sharedPosts}
           />
@@ -751,6 +818,9 @@ function App() {
             activeSection={activeSection}
             product={selectedProduct}
             handleSectionClick={handleSectionClick}
+            onNotify={(message) => showToast(message, 'success')}
+            posts={sharedPosts}
+            onNavigate={handleProductClick}
           />
         </div>
       </div>

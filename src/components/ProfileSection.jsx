@@ -1,11 +1,59 @@
 import React, { useState, useRef, useEffect } from 'react';
 import {
-  Camera, Share2, Settings, QrCode, Copy, Check, Grid, Heart, User, AtSign, Clock, AlertCircle, X, MoreVertical, LogOut, Star, Eye, Bookmark, Send, Upload, ImagePlus, Download, Trash2, Flag, Link2, EyeOff
+  Share2, Settings, QrCode, Copy, Check, Grid, Heart, User, AtSign, Clock, AlertCircle, X, MoreVertical, LogOut, Star, Eye, Bookmark, Send, Upload, ImagePlus, Download, Trash2, Flag, Link2, EyeOff
 } from 'lucide-react';
 import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
 import { deletePost } from '../lib/posts';
+import { getLikedPosts, REACTIONS_UPDATED_EVENT } from '../lib/reactions';
+import QRCode from 'qrcode';
+
+const SHARE_TARGETS = [
+  {
+    id: 'whatsapp',
+    label: 'WhatsApp',
+    tint: '#25d366',
+    icon: <Send size={18} />,
+    href: (url, text) => `https://wa.me/?text=${encodeURIComponent(`${text} ${url}`)}`,
+  },
+  {
+    id: 'x',
+    label: 'X',
+    tint: '#ffffff',
+    icon: <Star size={18} />,
+    href: (url, text) => `https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`,
+  },
+  {
+    id: 'facebook',
+    label: 'Facebook',
+    tint: '#1877f2',
+    icon: <Flag size={18} />,
+    href: (url) => `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(url)}`,
+  },
+  {
+    id: 'email',
+    label: 'Email',
+    tint: '#f59e0b',
+    icon: <Send size={18} />,
+    href: (url, text) => `mailto:?subject=${encodeURIComponent(text)}&body=${encodeURIComponent(url)}`,
+  },
+];
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000;
+
+function readEditInfo(storageKey) {
+  try {
+    const data = window.localStorage.getItem(storageKey);
+    return data ? JSON.parse(data) : { lastEditAt: null, lastValue: '' };
+  } catch (e) {
+    return { lastEditAt: null, lastValue: '' };
+  }
+}
+
+function formatCooldown(cd) {
+  if (!cd) return '';
+  return cd.days > 0 ? `${cd.days}d ${cd.hours}h` : `${cd.hours}h ${cd.minutes}m`;
+}
 
 function getRemainingTime(targetMs) {
   const now = Date.now();
@@ -17,11 +65,31 @@ function getRemainingTime(targetMs) {
   return { days, hours, minutes };
 }
 
-function getProfileStats(email) {
+// Supabase rows use snake_case; the local post shape uses camelCase.
+function normalizeRemotePost(post) {
+  return {
+    ...post,
+    id: post.id,
+    url: post.url || post.image_url,
+    images: Array.isArray(post.images) ? post.images : [post.url || post.image_url].filter(Boolean),
+    title: post.title,
+    description: post.description,
+    authorEmail: post.authorEmail || post.author_email,
+    authorName: post.authorName || post.author_name,
+    authorHandle: post.authorHandle || post.author_handle,
+    views: Number(post.views || 0),
+    likes: Number(post.likes || 0),
+    comments: Number(post.comments || 0),
+    shares: Number(post.shares || 0),
+    date: post.date || post.created_at,
+  };
+}
+
+function getProfileStats(email, remotePosts) {
   const all = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
   const userKey = email || 'default';
   const userStats = all[userKey] || { posts: 0, followers: 0, following: 0, postImages: [] };
-  
+
   const postsById = new Map();
   const addPost = (post) => {
     const pid = typeof post === 'object' ? (post.id || post.url || post.title) : post;
@@ -50,6 +118,23 @@ function getProfileStats(email) {
       }
     }
   } catch (e) {}
+
+  // Posts uploaded through the Upload section live in Supabase, not localStorage.
+  // Merge the ones authored by this user so they show up on their own profile.
+  if (Array.isArray(remotePosts)) {
+    let removedPostIds = new Set();
+    try {
+      removedPostIds = new Set(JSON.parse(window.localStorage.getItem('aifashionRemovedPostIds') || '[]'));
+    } catch (e) {}
+
+    for (const post of remotePosts) {
+      if (!post || typeof post !== 'object') continue;
+      const author = post.authorEmail || post.author_email;
+      if (!author || author !== userKey) continue;
+      if (removedPostIds.has(post.id)) continue;
+      addPost(normalizeRemotePost(post));
+    }
+  }
 
   return {
     ...userStats,
@@ -90,8 +175,8 @@ function ProfileSection({
   handleSectionClick,
   handleProductClick,
   onLogout,
+  posts,
 }) {
-  const [isHoveringPhoto, setIsHoveringPhoto] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [activeTab, setActiveTab] = useState('mystyle');
@@ -115,11 +200,20 @@ function ProfileSection({
   const styleFileInputRef = useRef(null);
   const fileInputRef = useRef(null);
   const toastIdRef = useRef(0);
+  const dropdownRef = useRef(null);
 
-  const [nameEditInfo, setNameEditInfo] = useState(() => {
-    const data = window.localStorage.getItem('aifashion_nameEditInfo');
-    return data ? JSON.parse(data) : { lastEditAt: null, lastValue: '' };
-  });
+  const [showPhotoViewer, setShowPhotoViewer] = useState(false);
+  const [showShareTargets, setShowShareTargets] = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState('');
+  const [closingModal, setClosingModal] = useState(null);
+
+  const profileHandle = (userHandle || savedProfile?.handle || '@fashionista_ai').replace('@', '');
+  const profileUrl = `https://aifashion.com/${profileHandle}`;
+  const shareText = `Check out ${savedProfile?.name || userName || 'this profile'} on AI Fashion`;
+
+  const [nameEditInfo, setNameEditInfo] = useState(() => readEditInfo('aifashion_nameEditInfo'));
+  const [handleEditInfo, setHandleEditInfo] = useState(() => readEditInfo('aifashion_handleEditInfo'));
+  const [bioEditInfo, setBioEditInfo] = useState(() => readEditInfo('aifashion_bioEditInfo'));
 
   const [, setTick] = useState(0);
   useEffect(() => {
@@ -128,22 +222,114 @@ function ProfileSection({
   }, []);
 
   useEffect(() => {
-    setProfileStats(getProfileStats(userEmail || savedProfile?.email));
+    setProfileStats(getProfileStats(userEmail || savedProfile?.email, posts));
     const reactionStore = getReactionStore();
     const userKey = userEmail || savedProfile?.email || 'default';
     setLikedPostIds(new Set(Object.keys(reactionStore).filter(id => reactionStore[id]?.likes?.[userKey])));
     setSavedPostIds(new Set(Object.keys(reactionStore).filter(id => reactionStore[id]?.saves?.[userKey])));
-  }, [userEmail, savedProfile?.email, activeSection]);
+  }, [userEmail, savedProfile?.email, activeSection, posts]);
 
   useEffect(() => {
-    const refreshProfilePosts = () => setProfileStats(getProfileStats(userEmail || savedProfile?.email));
+    const refreshProfilePosts = () => setProfileStats(getProfileStats(userEmail || savedProfile?.email, posts));
     window.addEventListener('aifashion-posts-updated', refreshProfilePosts);
     return () => window.removeEventListener('aifashion-posts-updated', refreshProfilePosts);
+  }, [userEmail, savedProfile?.email, posts]);
+
+  // Render a real, scannable QR for the profile URL — the old one was only a
+  // decorative lucide icon that encoded nothing.
+  useEffect(() => {
+    if (!showShareModal) return;
+    let cancelled = false;
+
+    QRCode.toDataURL(profileUrl, {
+      width: 460,
+      margin: 1,
+      errorCorrectionLevel: 'M',
+      color: { dark: '#1b1726', light: '#ffffff' },
+    })
+      .then((url) => { if (!cancelled) setQrDataUrl(url); })
+      .catch(() => { if (!cancelled) setQrDataUrl(''); });
+
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showShareModal, profileUrl]);
+
+  useEffect(() => {
+    if (!showShareModal) setShowShareTargets(false);
+  }, [showShareModal]);
+
+  // Likes can be toggled from Home or Search — keep the tabs in sync.
+  useEffect(() => {
+    const syncReactions = () => {
+      const reactionStore = getReactionStore();
+      const userKey = userEmail || savedProfile?.email || 'default';
+      setLikedPostIds(new Set(Object.keys(reactionStore).filter(id => reactionStore[id]?.likes?.[userKey])));
+      setSavedPostIds(new Set(Object.keys(reactionStore).filter(id => reactionStore[id]?.saves?.[userKey])));
+    };
+    window.addEventListener(REACTIONS_UPDATED_EVENT, syncReactions);
+    window.addEventListener('storage', syncReactions);
+    return () => {
+      window.removeEventListener(REACTIONS_UPDATED_EVENT, syncReactions);
+      window.removeEventListener('storage', syncReactions);
+    };
   }, [userEmail, savedProfile?.email]);
+
+  // Close the "..." menu on an outside click or Escape.
+  useEffect(() => {
+    if (!showDropdown) return;
+
+    const onPointerDown = (e) => {
+      if (!dropdownRef.current?.contains(e.target)) setShowDropdown(false);
+    };
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') setShowDropdown(false);
+    };
+
+    document.addEventListener('mousedown', onPointerDown);
+    document.addEventListener('touchstart', onPointerDown);
+    window.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', onPointerDown);
+      document.removeEventListener('touchstart', onPointerDown);
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showDropdown]);
+
+  // While a profile modal is open: lock the page behind it and allow Escape to close.
+  const isAnyModalOpen = isEditing || showShareModal || showPhotoViewer;
+  useEffect(() => {
+    if (!isAnyModalOpen) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (e) => {
+      if (e.key !== 'Escape') return;
+      if (showPhotoViewer) closePhotoViewer();
+      else if (showShareModal) closeShareModal();
+      else if (isEditing) closeEditModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [isAnyModalOpen, isEditing, showShareModal, showPhotoViewer]);
 
   const nameCoolEnd = nameEditInfo.lastEditAt ? nameEditInfo.lastEditAt + SEVEN_DAYS_MS : null;
   const nameCd = nameCoolEnd ? getRemainingTime(nameCoolEnd) : null;
   const isNameLocked = !!nameCd;
+
+  // Username can be changed once every 30 days
+  const handleCoolEnd = handleEditInfo.lastEditAt ? handleEditInfo.lastEditAt + THIRTY_DAYS_MS : null;
+  const handleCd = handleCoolEnd ? getRemainingTime(handleCoolEnd) : null;
+  const isHandleLocked = !!handleCd;
+
+  // Bio can be changed once every 7 days
+  const bioCoolEnd = bioEditInfo.lastEditAt ? bioEditInfo.lastEditAt + SEVEN_DAYS_MS : null;
+  const bioCd = bioCoolEnd ? getRemainingTime(bioCoolEnd) : null;
+  const isBioLocked = !!bioCd;
 
   const openEditModal = () => {
     setDraftName(userName || savedProfile?.name || '');
@@ -215,7 +401,7 @@ function ProfileSection({
     profile.posts = profile.postImages.length;
     allProfiles[profileKey] = profile;
     window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
-    setProfileStats({ ...profile });
+    setProfileStats(getProfileStats(profileKey, posts));
     closeStyleUpload();
     showToast('Style added to your profile.', 'success');
   };
@@ -260,6 +446,7 @@ function ProfileSection({
 
     reactionStore[postId] = reaction;
     window.localStorage.setItem('aifashionPostReactions', JSON.stringify(reactionStore));
+    window.dispatchEvent(new Event(REACTIONS_UPDATED_EVENT));
 
     setSelectedPost(updatedPost);
     const profileKey = userEmail || savedProfile?.email || 'default';
@@ -270,7 +457,7 @@ function ProfileSection({
         return currentId === postId ? updatedPost : post;
       });
       window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
-      setProfileStats({ ...allProfiles[profileKey] });
+      setProfileStats(getProfileStats(profileKey, posts));
     }
   };
 
@@ -327,7 +514,6 @@ function ProfileSection({
         });
         allProfiles[profileKey].posts = allProfiles[profileKey].postImages.length;
         window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
-        setProfileStats({ ...allProfiles[profileKey] });
       }
       try {
         const globalPosts = JSON.parse(window.localStorage.getItem('aifashionGlobalPosts') || '[]');
@@ -339,6 +525,8 @@ function ProfileSection({
       const removedPostIds = new Set(JSON.parse(window.localStorage.getItem('aifashionRemovedPostIds') || '[]'));
       removedPostIds.add(postId);
       window.localStorage.setItem('aifashionRemovedPostIds', JSON.stringify([...removedPostIds]));
+      // Recompute now so the grid updates immediately, without waiting on the Supabase refetch.
+      setProfileStats(getProfileStats(profileKey, posts));
       window.dispatchEvent(new Event('aifashion-posts-updated'));
       setSelectedPost(null);
       const deleteRemotePost = async () => {
@@ -384,37 +572,114 @@ function ProfileSection({
     }
 
     const prevName = savedProfile?.name || userName || '';
-    if (isNameLocked && draftName.trim() !== prevName) {
-      showToast(`Name can be changed again in ${nameCd.days}d ${nameCd.hours}h.`, 'error');
+    const prevHandle = savedProfile?.handle || userHandle || '';
+    const prevBio = savedProfile?.bio || userBio || '';
+
+    const nextName = draftName.trim();
+    const nextHandle = draftHandle.trim();
+    const nextBio = draftBio.trim();
+
+    const nameChanged = nextName !== prevName;
+    const handleChanged = nextHandle !== prevHandle;
+    const bioChanged = nextBio !== prevBio;
+
+    if (isNameLocked && nameChanged) {
+      showToast(`Name can be changed again in ${formatCooldown(nameCd)}.`, 'error');
+      return;
+    }
+    if (isHandleLocked && handleChanged) {
+      showToast(`Username can be changed again in ${formatCooldown(handleCd)}.`, 'error');
+      return;
+    }
+    if (isBioLocked && bioChanged) {
+      showToast(`Bio can be changed again in ${formatCooldown(bioCd)}.`, 'error');
       return;
     }
 
-    if (draftName.trim() !== prevName) {
-      const newInfo = { lastEditAt: Date.now(), lastValue: draftName.trim() };
+    if (nameChanged) {
+      const newInfo = { lastEditAt: Date.now(), lastValue: nextName };
       setNameEditInfo(newInfo);
       window.localStorage.setItem('aifashion_nameEditInfo', JSON.stringify(newInfo));
     }
+    if (handleChanged) {
+      const newInfo = { lastEditAt: Date.now(), lastValue: nextHandle };
+      setHandleEditInfo(newInfo);
+      window.localStorage.setItem('aifashion_handleEditInfo', JSON.stringify(newInfo));
+    }
+    if (bioChanged) {
+      const newInfo = { lastEditAt: Date.now(), lastValue: nextBio };
+      setBioEditInfo(newInfo);
+      window.localStorage.setItem('aifashion_bioEditInfo', JSON.stringify(newInfo));
+    }
 
-    setUserName(draftName.trim());
-    setUserHandle(draftHandle.trim());
-    setUserBio(draftBio.trim());
+    setUserName(nextName);
+    setUserHandle(nextHandle);
+    setUserBio(nextBio);
 
     const result = handleProfileSave({
-      name: draftName.trim(),
-      handle: draftHandle.trim(),
-      bio: draftBio.trim(),
+      name: nextName,
+      handle: nextHandle,
+      bio: nextBio,
     });
 
     if (result?.success) {
       showToast(result.message, 'success');
-      setIsEditing(false);
+      closeEditModal();
     } else {
       showToast(result?.message || 'Profile update failed. Please try again.', 'error');
     }
   };
 
+  // Let the exit animation play before the modal actually unmounts.
+  const closeWithAnimation = (setter, key) => {
+    setClosingModal(key);
+    window.setTimeout(() => {
+      setter(false);
+      setClosingModal((current) => (current === key ? null : current));
+    }, 220);
+  };
+
+  const closeEditModal = () => closeWithAnimation(setIsEditing, 'edit');
+  const closeShareModal = () => closeWithAnimation(setShowShareModal, 'share');
+  const closePhotoViewer = () => closeWithAnimation(setShowPhotoViewer, 'photo');
+
+  const copyProfileLink = () => {
+    navigator.clipboard?.writeText(profileUrl);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  };
+
+  // Use the OS share sheet where it exists, otherwise reveal our own targets.
+  const handleShareProfile = async () => {
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: 'AI Fashion', text: shareText, url: profileUrl });
+        return;
+      } catch (error) {
+        if (error?.name === 'AbortError') return;
+      }
+    }
+    setShowShareTargets((open) => !open);
+  };
+
   const displayBio = (userBio || savedProfile?.bio || '').trim();
   const postImages = profileStats.postImages || [];
+
+  // A like can land on someone else's post (from Home or Search), which never
+  // appears in postImages — so merge in the snapshots saved at like time.
+  const likedFromOwnPosts = postImages.filter(post => likedPostIds.has(getPostId(post)));
+  const ownLikedIds = new Set(likedFromOwnPosts.map(getPostId));
+  const likedPosts = [
+    ...likedFromOwnPosts,
+    ...getLikedPosts(userEmail || savedProfile?.email).filter(post => !ownLikedIds.has(getPostId(post))),
+  ];
+  const savedPosts = postImages.filter(post => savedPostIds.has(getPostId(post)));
+
+  const visiblePosts = activeTab === 'saved'
+    ? savedPosts
+    : activeTab === 'liked'
+      ? likedPosts
+      : postImages;
 
   return (
     <section id="profile" className={`section profile-section ${activeSection === 'profile' ? 'active' : 'hidden'}`}>
@@ -428,20 +693,31 @@ function ProfileSection({
         <div className="social-top-bar" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', position: 'relative' }}>
           <h2 style={{ fontSize: '18px', fontWeight: '600', margin: 0, color: 'var(--text)' }}>FashionAI</h2>
 
-          <div style={{ position: 'absolute', right: '20px', top: '16px' }}>
-            <button className="social-icon-btn" onClick={() => setShowDropdown(!showDropdown)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text)' }}>
-              <MoreVertical size={22} />
+          <div className="profile-menu-anchor" ref={dropdownRef}>
+            <button
+              type="button"
+              className={`profile-menu-trigger ${showDropdown ? 'is-open' : ''}`}
+              onClick={() => setShowDropdown(!showDropdown)}
+              aria-haspopup="menu"
+              aria-expanded={showDropdown}
+              aria-label="Profile menu"
+            >
+              <MoreVertical size={20} />
             </button>
             {showDropdown && (
-              <div className="profile-dropdown-menu profile-dropdown-menu-animated" style={{ position: 'absolute', right: 0, top: '100%', background: 'var(--card-bg)', borderRadius: '12px', padding: '8px', boxShadow: '0 4px 20px rgba(0,0,0,0.15)', zIndex: 10, minWidth: '160px', border: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                <button className="dropdown-item" onClick={() => { setShowShareModal(true); setShowDropdown(false); }} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', color: 'var(--text)', borderRadius: '6px' }}>
-                  <Share2 size={16} style={{marginRight: '12px'}} /> Share Profile
+              <div className="profile-dropdown-menu profile-dropdown-menu-animated" role="menu">
+                <button type="button" role="menuitem" className="dropdown-item" onClick={() => { setShowShareModal(true); setShowDropdown(false); }}>
+                  <span className="dropdown-item-icon"><Share2 size={16} /></span>
+                  <span className="dropdown-item-label">Share Profile</span>
                 </button>
-                <button className="dropdown-item" onClick={() => { openEditModal(); setShowDropdown(false); }} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', color: 'var(--text)', borderRadius: '6px' }}>
-                  <Settings size={16} style={{marginRight: '12px'}} /> Settings
+                <button type="button" role="menuitem" className="dropdown-item" onClick={() => { openEditModal(); setShowDropdown(false); }}>
+                  <span className="dropdown-item-icon"><Settings size={16} /></span>
+                  <span className="dropdown-item-label">Settings</span>
                 </button>
-                <button className="dropdown-item" onClick={() => setShowLogoutModal(true)} style={{ display: 'flex', alignItems: 'center', padding: '10px 12px', background: 'none', border: 'none', width: '100%', textAlign: 'left', cursor: 'pointer', color: '#ff453a', borderRadius: '6px' }}>
-                  <LogOut size={16} style={{marginRight: '12px'}} /> Logout
+                <div className="dropdown-divider" role="separator" />
+                <button type="button" role="menuitem" className="dropdown-item is-danger" onClick={() => { setShowLogoutModal(true); setShowDropdown(false); }}>
+                  <span className="dropdown-item-icon"><LogOut size={16} /></span>
+                  <span className="dropdown-item-label">Logout</span>
                 </button>
               </div>
             )}
@@ -449,24 +725,31 @@ function ProfileSection({
         </div>
 
         <div className="social-profile-header-redesign" style={{ padding: '0 20px' }}>
-          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '16px' }}>
-            <div
-              className="social-profile-photo-wrapper"
-              style={{ width: '85px', height: '85px', flexShrink: 0, marginRight: '20px', borderRadius: '50%', border: '3px solid #5E5CE6', overflow: 'hidden', position: 'relative', cursor: 'pointer', padding: '3px', background: 'var(--card-bg)' }}
-              onMouseEnter={() => setIsHoveringPhoto(true)}
-              onMouseLeave={() => setIsHoveringPhoto(false)}
-              onClick={() => fileInputRef.current?.click()}
-            >
-              <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', position: 'relative' }}>
-                {userPhoto ? (
-                  <img src={userPhoto} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ width: '100%', height: '100%', background: 'var(--border)', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center' }}>
-                    <span style={{ fontSize: '24px', fontWeight: '600', color: 'var(--text-secondary)' }}>{getInitials()}</span>
-                  </div>
-                )}
-                <div className={`social-profile-photo-overlay ${isHoveringPhoto ? 'visible' : ''}`} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: isHoveringPhoto ? 1 : 0, transition: 'opacity 0.2s' }}>
-                  <Camera size={24} color="#fff" />
+          <div style={{ display: 'flex', alignItems: 'center', marginBottom: '6px' }}>
+            <div className="social-profile-photo-block" style={{ position: 'relative', flexShrink: 0, marginRight: '20px' }}>
+              {/* No hover overlay or camera badge — the bare photo itself opens the viewer */}
+              <div
+                className="social-profile-photo-wrapper"
+                style={{ width: '104px', height: '104px', borderRadius: '50%', border: '3px solid #5E5CE6', overflow: 'hidden', position: 'relative', cursor: 'pointer', padding: '3px', background: 'var(--card-bg)' }}
+                onClick={() => setShowPhotoViewer(true)}
+                role="button"
+                tabIndex={0}
+                aria-label="View profile photo"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    setShowPhotoViewer(true);
+                  }
+                }}
+              >
+                <div style={{ width: '100%', height: '100%', borderRadius: '50%', overflow: 'hidden', position: 'relative' }}>
+                  {userPhoto ? (
+                    <img src={userPhoto} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', background: 'var(--border)', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center' }}>
+                      <span style={{ fontSize: '30px', fontWeight: '600', color: 'var(--text-secondary)' }}>{getInitials()}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} style={{ display: 'none' }} />
@@ -480,60 +763,64 @@ function ProfileSection({
                   <path d="M8 12.5L11 15.5L16 9.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                 </svg>
               </div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '13px', marginBottom: '16px' }}>
+              <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
                 {userHandle || savedProfile?.handle || '@fashionista_ai'}
               </div>
-              
-              <div style={{ display: 'flex', justifyContent: 'space-between', paddingRight: '10px' }}>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text)' }}>{formatStatCount(profileStats.posts)}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Posts</div>
+
+              {/* Bio lives with the name and username, right under them */}
+              {displayBio && (
+                <div className="social-bio">
+                  <p>{displayBio}</p>
                 </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text)' }}>{formatStatCount(profileStats.followers)}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Followers</div>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text)' }}>{formatStatCount(profileStats.following)}</div>
-                  <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Following</div>
-                </div>
-              </div>
+              )}
             </div>
           </div>
-          
-          {displayBio && (
-            <div className="social-bio" style={{ fontSize: '14px', marginBottom: '20px', lineHeight: '1.5', color: 'var(--text-secondary)' }}>
-              <p>{displayBio}</p>
+
+          <div className="social-stats-row" style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginBottom: '20px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text)' }}>{formatStatCount(profileStats.posts)}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Posts</div>
             </div>
-          )}
-          
-          <div style={{ display: 'flex', gap: '12px', marginBottom: '24px', marginTop: displayBio ? 0 : '16px' }}>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text)' }}>{formatStatCount(profileStats.followers)}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Followers</div>
+            </div>
+            <div style={{ textAlign: 'center' }}>
+              <div style={{ fontWeight: 'bold', fontSize: '16px', color: 'var(--text)' }}>{formatStatCount(profileStats.following)}</div>
+              <div style={{ fontSize: '12px', color: 'var(--text-secondary)', marginTop: '2px' }}>Following</div>
+            </div>
+          </div>
+
+          <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
              <button style={{ flex: 1, padding: '10px 0', borderRadius: '12px', border: '1px solid #5E5CE6', color: '#5E5CE6', background: 'transparent', fontWeight: '600', cursor: 'pointer' }} onClick={openEditModal}>Edit Profile</button>
              <button style={{ flex: 1, padding: '10px 0', borderRadius: '12px', background: '#5E5CE6', color: '#fff', border: 'none', fontWeight: '600', cursor: 'pointer' }} onClick={() => setShowShareModal(true)}>Share Profile</button>
           </div>
         </div>
 
         <div className="social-posts-container" style={{ padding: '0 20px' }}>
-          <div className="social-tabs-container" style={{ display: 'flex', position: 'relative', borderBottom: '1px solid var(--border)', marginBottom: '20px' }}>
-            <button onClick={() => setActiveTab('mystyle')} style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontWeight: activeTab === 'mystyle' ? 'bold' : '500', color: activeTab === 'mystyle' ? '#5E5CE6' : 'var(--text)', cursor: 'pointer', transition: 'color 0.3s ease' }}>My Style</button>
-            <button onClick={() => setActiveTab('saved')} style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontWeight: activeTab === 'saved' ? 'bold' : '500', color: activeTab === 'saved' ? '#5E5CE6' : 'var(--text)', cursor: 'pointer', transition: 'color 0.3s ease' }}>Saved</button>
-            <button onClick={() => setActiveTab('liked')} style={{ flex: 1, padding: '12px 0', background: 'none', border: 'none', fontWeight: activeTab === 'liked' ? 'bold' : '500', color: activeTab === 'liked' ? '#5E5CE6' : 'var(--text)', cursor: 'pointer', transition: 'color 0.3s ease' }}>Liked</button>
-            
-            <div style={{ 
-              position: 'absolute', 
-              bottom: 0, 
-              left: activeTab === 'mystyle' ? '0%' : activeTab === 'saved' ? '33.33%' : '66.66%', 
-              width: '33.33%', 
-              height: '3px', 
-              background: '#5E5CE6', 
-              transition: 'left 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-              borderRadius: '3px 3px 0 0'
-            }} />
+          <div className="social-tabs-container" role="tablist">
+            <div className="social-tabs-thumb" data-tab={activeTab} aria-hidden="true" />
+            {[
+              { id: 'mystyle', label: 'My Style' },
+              { id: 'saved', label: 'Saved' },
+              { id: 'liked', label: 'Liked' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                role="tab"
+                aria-selected={activeTab === tab.id}
+                className={activeTab === tab.id ? 'is-active' : ''}
+                onClick={() => setActiveTab(tab.id)}
+              >
+                {tab.label}
+              </button>
+            ))}
           </div>
 
-          {(activeTab === 'saved' ? postImages.filter(post => savedPostIds.has(getPostId(post))) : activeTab === 'liked' ? postImages.filter(post => likedPostIds.has(getPostId(post))) : postImages).length > 0 ? (
+          {visiblePosts.length > 0 ? (
             <div className="social-posts-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '20px' }}>
-              {(activeTab === 'saved' ? postImages.filter(post => savedPostIds.has(getPostId(post))) : activeTab === 'liked' ? postImages.filter(post => likedPostIds.has(getPostId(post))) : postImages).map((post, index) => {
+              {visiblePosts.map((post, index) => {
                 const rawSrc = typeof post === 'string' ? post : post.url;
                 const src = repairImageUrl(rawSrc);
                 return (
@@ -598,7 +885,7 @@ function ProfileSection({
       </div>
 
       {isEditing && (
-        <div className="modal-overlay liquid-glass-overlay" onClick={() => setIsEditing(false)}>
+        <div className={`modal-overlay liquid-glass-overlay ${closingModal === 'edit' ? 'is-closing' : ''}`} onClick={closeEditModal}>
           <div className="modal-scroll-wrap profile-edit-modal-wrap">
             <div className="profile-form-modal profile-form-card-advanced animate-scale-in" onClick={e => e.stopPropagation()}>
               <div className="form-card-header">
@@ -608,7 +895,7 @@ function ProfileSection({
                     <h3 className="form-card-title">Edit Profile</h3>
                     <p className="form-card-subtitle">Update your name, username and bio</p>
                   </div>
-                  <button type="button" className="modal-close-x-btn" onClick={() => setIsEditing(false)} aria-label="Close">
+                  <button type="button" className="modal-close-x-btn" onClick={closeEditModal} aria-label="Close">
                     <X size={18} />
                   </button>
                 </div>
@@ -630,36 +917,80 @@ function ProfileSection({
                       <input value={draftName} onChange={(e) => setDraftName(e.target.value)} placeholder="Enter your full name" className="form-input" />
                     </div>
                   )}
-                  {isNameLocked && (
+                  {isNameLocked ? (
                     <p className="cooldown-note">
                       <AlertCircle size={12} />
                       Recently changed. Next edit available in <strong>{nameCd.days}d {nameCd.hours}h {nameCd.minutes}m</strong>.
                     </p>
+                  ) : (
+                    <p className="cooldown-hint">Name can be changed once every 7 days.</p>
                   )}
                 </div>
 
                 <div className="form-group">
                   <label className="form-label"><AtSign size={14} /> Username</label>
-                  <div className="form-input-wrap">
-                    <input value={draftHandle} onChange={(e) => setDraftHandle(e.target.value)} placeholder="@your_handle" className="form-input" />
-                  </div>
+                  {isHandleLocked ? (
+                    <div className="form-input-wrap locked-input">
+                      <input value={draftHandle} readOnly className="form-input" style={{ opacity: 0.7, cursor: 'not-allowed' }} />
+                      <div className="lock-badge" title="Changed recently. Can edit again after 30-day cooldown.">
+                        <Clock size={12} />
+                        <span>{formatCooldown(handleCd)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="form-input-wrap">
+                      <input value={draftHandle} onChange={(e) => setDraftHandle(e.target.value)} placeholder="@your_handle" className="form-input" />
+                    </div>
+                  )}
+                  {isHandleLocked ? (
+                    <p className="cooldown-note">
+                      <AlertCircle size={12} />
+                      Recently changed. Next edit available in <strong>{handleCd.days}d {handleCd.hours}h {handleCd.minutes}m</strong>.
+                    </p>
+                  ) : (
+                    <p className="cooldown-hint">Username can be changed once every 30 days.</p>
+                  )}
                 </div>
 
                 <div className="form-group">
                   <label className="form-label"><User size={14} /> Bio</label>
-                  <div className="form-input-wrap">
-                    <textarea
-                      value={draftBio}
-                      onChange={(e) => setDraftBio(e.target.value)}
-                      placeholder="Write a short bio..."
-                      className="form-input profile-bio-input"
-                      rows={4}
-                    />
-                  </div>
+                  {isBioLocked ? (
+                    <div className="form-input-wrap locked-input">
+                      <textarea
+                        value={draftBio}
+                        readOnly
+                        className="form-input profile-bio-input"
+                        rows={4}
+                        style={{ opacity: 0.7, cursor: 'not-allowed' }}
+                      />
+                      <div className="lock-badge" title="Changed recently. Can edit again after 7-day cooldown.">
+                        <Clock size={12} />
+                        <span>{formatCooldown(bioCd)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="form-input-wrap">
+                      <textarea
+                        value={draftBio}
+                        onChange={(e) => setDraftBio(e.target.value)}
+                        placeholder="Write a short bio..."
+                        className="form-input profile-bio-input"
+                        rows={4}
+                      />
+                    </div>
+                  )}
+                  {isBioLocked ? (
+                    <p className="cooldown-note">
+                      <AlertCircle size={12} />
+                      Recently changed. Next edit available in <strong>{bioCd.days}d {bioCd.hours}h {bioCd.minutes}m</strong>.
+                    </p>
+                  ) : (
+                    <p className="cooldown-hint">Bio can be changed once every 7 days.</p>
+                  )}
                 </div>
 
                 <div className="form-actions modal-actions-center">
-                  <button type="button" className="cancel-profile-btn" onClick={() => setIsEditing(false)}>Cancel</button>
+                  <button type="button" className="cancel-profile-btn" onClick={closeEditModal}>Cancel</button>
                   <button type="submit" className="save-profile-btn"><Check size={16} /> Save Changes</button>
                 </div>
               </form>
@@ -669,7 +1000,7 @@ function ProfileSection({
       )}
 
       {showShareModal && (
-        <div className="share-modal-overlay animate-fade-in" onClick={() => setShowShareModal(false)}>
+        <div className={`share-modal-overlay animate-fade-in ${closingModal === 'share' ? 'is-closing' : ''}`} onClick={closeShareModal}>
           <div className="share-modal-content animate-scale-in" onClick={e => e.stopPropagation()}>
             <div className="share-modal-header">
               <div className="share-modal-pic-wrap">
@@ -684,26 +1015,64 @@ function ProfileSection({
             </div>
 
             <div className="share-modal-qr-wrapper">
-              <QrCode size={180} strokeWidth={1} color="var(--primary)" />
+              {qrDataUrl ? (
+                <img className="share-modal-qr" src={qrDataUrl} alt={`QR code for ${profileUrl}`} />
+              ) : (
+                <div className="share-modal-qr is-loading"><QrCode size={64} strokeWidth={1} /></div>
+              )}
               <div className="qr-scan-text">Scan to view profile</div>
             </div>
 
             <div className="share-modal-actions">
               <button
+                type="button"
                 className="social-btn-secondary"
-                onClick={() => {
-                  navigator.clipboard.writeText(`https://aifashion.com/${userHandle.replace('@', '')}`);
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 2000);
-                }}
+                onClick={copyProfileLink}
               >
                 {copied ? <Check size={18}/> : <Copy size={18} />}
                 {copied ? 'Copied!' : 'Copy Link'}
               </button>
-              <button className="social-btn-primary">
+              <button type="button" className="social-btn-primary" onClick={handleShareProfile}>
                 <Share2 size={18} /> Share Profile
               </button>
             </div>
+
+            {showShareTargets && (
+              <div className="share-target-grid">
+                {SHARE_TARGETS.map((target) => (
+                  <a
+                    key={target.id}
+                    className="share-target"
+                    href={target.href(profileUrl, shareText)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    onClick={closeShareModal}
+                  >
+                    <span className="share-target-icon" style={{ '--tint': target.tint }}>{target.icon}</span>
+                    <span>{target.label}</span>
+                  </a>
+                ))}
+                <button type="button" className="share-target" onClick={copyProfileLink}>
+                  <span className="share-target-icon" style={{ '--tint': '#7c5cff' }}><Link2 size={18} /></span>
+                  <span>{copied ? 'Copied' : 'Copy link'}</span>
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {showPhotoViewer && (
+        <div className={`profile-photo-viewer-overlay ${closingModal === 'photo' ? 'is-closing' : ''}`} onClick={closePhotoViewer}>
+          <button type="button" className="profile-photo-viewer-close" onClick={closePhotoViewer} aria-label="Close">
+            <X size={22} />
+          </button>
+          <div className="profile-photo-viewer" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Profile photo">
+            {userPhoto ? (
+              <img className="profile-photo-viewer-image" src={userPhoto} alt="Profile" />
+            ) : (
+              <div className="profile-photo-viewer-fallback">{getInitials()}</div>
+            )}
           </div>
         </div>
       )}

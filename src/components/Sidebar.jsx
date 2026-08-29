@@ -18,7 +18,9 @@ import {
   Search,
   Inbox,
   Crown,
+  PanelLeftClose,
 } from 'lucide-react';
+import { useCart, getCartCount } from '../lib/cart';
 
 function Sidebar({
   activeSection,
@@ -26,7 +28,10 @@ function Sidebar({
   sidebarSearch,
   setSidebarSearch,
   sidebarSearchRef,
+  onCloseSidebar,
 }) {
+  const cartItems = useCart();
+  const cartCount = getCartCount(cartItems);
 
   const sidebarSections = [
   
@@ -55,23 +60,16 @@ function Sidebar({
       items: ['Upload'],
     },
     {
-      id: 'inbox',
-      title: 'Inbox',
-      icon: Inbox,
-      items: ['Inbox'],
+      id: 'cart',
+      title: 'Add to Cart',
+      icon: ShoppingBag,
+      items: ['Add to Cart'],
     },
-   
     {
       id: 'billing',
       title: 'Billing',
       icon: CreditCard,
       items: ['Subscription'],
-    },
-    {
-      id: 'settings',
-      title: 'Settings',
-      icon: Settings,
-      items: ['Workspace'],
     },
     {
       id: 'dashboard',
@@ -102,7 +100,18 @@ function Sidebar({
   return (
     <aside className="sidebar">
       <div className="sidebar-sticky">
-        <div className="sidebar-brand">AIFashion</div>
+        <div className="sidebar-brand-row">
+          <div className="sidebar-brand">AIFashion</div>
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={onCloseSidebar}
+            aria-label="Close sidebar"
+            title="Close sidebar"
+          >
+            <PanelLeftClose size={19} />
+          </button>
+        </div>
         <div className="sidebar-search">
           <label>Sidebar search</label>
           <input
@@ -144,6 +153,9 @@ function Sidebar({
                       className={`${activeSection === item.toLowerCase().replace(/\s+/g, '-') ? 'active' : ''} ${isItemHidden ? 'hide-item' : ''}`}
                     >
                       {item}
+                      {item === 'Add to Cart' && cartCount > 0 && (
+                        <span className="sidebar-cart-badge">{cartCount}</span>
+                      )}
                     </a>
                   );
                 })

@@ -9,8 +9,12 @@ create table if not exists public.posts (
   author_email text,
   author_name text not null default 'Anonymous',
   author_handle text not null default '@user',
+  stock integer not null default 0,
   created_at timestamptz not null default now()
 );
+
+-- For databases created before `stock` existed:
+alter table public.posts add column if not exists stock integer not null default 0;
 
 alter table public.posts enable row level security;
 create policy "Anyone can read posts" on public.posts for select using (true);

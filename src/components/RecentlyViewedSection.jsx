@@ -1,5 +1,7 @@
 import React from 'react';
 import { ArrowLeft, Heart, Star } from 'lucide-react';
+import PostImage from './PostImage';
+import { useLikedPostIds, toggleLike, getPostId } from '../lib/reactions';
 import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
 
 function readRecentlyViewed() {
@@ -14,14 +16,16 @@ function readRecentlyViewed() {
 
 export default function RecentlyViewedSection({ activeSection, handleSectionClick, handleProductClick }) {
   const recentlyViewed = readRecentlyViewed();
+  const likedPostIds = useLikedPostIds();
 
   if (activeSection !== 'recently-viewed') return null;
 
   return (
     <section id="recently-viewed" className="section dashboard-overview-section active">
       <div className="dashboard-overview-container">
-        <button className="view-all-link" onClick={(event) => handleSectionClick(event, 'home')}>
-          <ArrowLeft size={16} /> Back to Home
+        <button type="button" className="section-back-btn" onClick={(event) => handleSectionClick(event, 'home')}>
+          <span className="section-back-icon"><ArrowLeft size={17} /></span>
+          <span>Back to Home</span>
         </button>
         <div className="overview-section-header" style={{ marginTop: '24px' }}>
           <h2 className="overview-section-title">Recently Viewed</h2>
@@ -35,9 +39,14 @@ export default function RecentlyViewedSection({ activeSection, handleSectionClic
             return (
               <div key={post.id || `${post.url}-${index}`} className="trending-product-card" onClick={() => handleProductClick(post)}>
                 <div className="trending-product-image-wrap">
-                  <img src={imgSrc} alt={title} className="trending-product-image" loading="lazy" onError={(event) => { event.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
-                  <button className="trending-product-favorite" onClick={(event) => event.stopPropagation()}>
-                    <Heart size={18} />
+                  <PostImage src={imgSrc} alt={title} className="trending-product-image" />
+                  <button
+                    type="button"
+                    className={`trending-product-favorite ${likedPostIds.has(getPostId(post)) ? 'is-liked' : ''}`}
+                    onClick={(event) => { event.stopPropagation(); toggleLike(post); }}
+                    aria-label={likedPostIds.has(getPostId(post)) ? 'Unlike' : 'Like'}
+                  >
+                    <Heart size={18} fill={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'none'} color={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'currentColor'} />
                   </button>
                 </div>
                 <div className="trending-product-info">

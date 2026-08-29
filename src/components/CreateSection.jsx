@@ -1,10 +1,19 @@
-import React, { useState, useEffect } from 'react';
-import { ShoppingBag, Palette, Sparkles, Package, Play, Camera, Image as ImageIcon, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import PostImage from './PostImage';
+import { ShoppingBag, Palette, Sparkles, Package, Play, Camera, Image as ImageIcon, X, ChevronRight } from 'lucide-react';
 
-function CreateSection({ activeSection }) {
+function CreateSection({ activeSection, posts, handleProductClick }) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [showCameraModal, setShowCameraModal] = useState(false);
+  const [mode, setMode] = useState('choose'); // 'choose' | 'camera' | 'preview'
+  const [cameraError, setCameraError] = useState('');
+  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [showRecommendations, setShowRecommendations] = useState(false);
+
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const galleryInputRef = useRef(null);
 
   // Reset state when section is hidden
   useEffect(() => {
@@ -12,8 +21,18 @@ function CreateSection({ activeSection }) {
       setIsScanning(false);
       setScanProgress(0);
       setShowCameraModal(false);
+      setMode('choose');
+      setCapturedPhoto(null);
+      setShowRecommendations(false);
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
     }
   }, [activeSection]);
+
+  // Never leave the camera light on.
+  useEffect(() => () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   useEffect(() => {
     let interval;
@@ -31,15 +50,163 @@ function CreateSection({ activeSection }) {
     return () => clearInterval(interval);
   }, [isScanning, scanProgress]);
 
+  // Lock the page behind the source picker and let Escape close it.
+  useEffect(() => {
+    if (!showCameraModal) return;
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
+    const onKeyDown = (e) => {
+      // Must go through closeModal so the camera stream is actually released.
+      if (e.key === 'Escape') closeModal();
+    };
+    window.addEventListener('keydown', onKeyDown);
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', onKeyDown);
+    };
+  }, [showCameraModal]);
+
   const handleStartScanClick = () => {
+    setCameraError('');
+    setMode('choose');
     setShowCameraModal(true);
   };
 
-  const handleSelectSource = () => {
+  const stopCamera = () => {
+    streamRef.current?.getTracks().forEach((track) => track.stop());
+    streamRef.current = null;
+  };
+
+  const closeModal = () => {
+    stopCamera();
     setShowCameraModal(false);
+    setMode('choose');
+    setCameraError('');
+  };
+
+  // Choosing a photo only previews it — the scan waits for an explicit Start.
+  const previewPhoto = (imageDataUrl) => {
+    if (!imageDataUrl) return;
+    stopCamera();
+    setCapturedPhoto(imageDataUrl);
+    setMode('preview');
+  };
+
+  const beginScan = () => {
+    closeModal();
     setIsScanning(true);
     setScanProgress(0);
+    setShowRecommendations(false);
   };
+
+  const openCamera = async () => {
+    setCameraError('');
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setCameraError('This browser does not support camera access.');
+      return;
+    }
+
+    setMode('camera');
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        await videoRef.current.play().catch(() => {});
+      }
+    } catch (error) {
+      const denied = error?.name === 'NotAllowedError' || error?.name === 'SecurityError';
+      setCameraError(
+        denied
+          ? 'Camera permission was blocked. Allow it in your browser settings and try again.'
+          : error?.name === 'NotFoundError'
+            ? 'No camera was found on this device.'
+            : `Camera could not be opened: ${error?.message || 'unknown error'}`,
+      );
+      setMode('choose');
+    }
+  };
+
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    previewPhoto(canvas.toDataURL('image/jpeg', 0.9));
+  };
+
+  const handleGalleryFile = (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => previewPhoto(reader.result);
+    reader.readAsDataURL(file);
+  };
+
+  // Only real uploaded posts — no demo catalogue here.
+  const uploadedLooks = (Array.isArray(posts) ? posts : []).filter(
+    (post) => post && typeof post === 'object' && (post.url || post.image_url),
+  );
+
+  if (showRecommendations) {
+    return (
+      <section id="ai-scan" className={`section ${activeSection === 'ai-scan' ? 'active' : 'hidden'}`}>
+        <div className="scan-results">
+          <button type="button" className="section-back-btn" onClick={() => setShowRecommendations(false)}>
+            <span className="section-back-icon"><ChevronRight size={17} style={{ transform: 'rotate(180deg)' }} /></span>
+            <span>Back to scan</span>
+          </button>
+
+          <header className="scan-results-head">
+            <div className="scan-results-face">
+              {capturedPhoto
+                ? <img src={capturedPhoto} alt="Your scan" />
+                : <span className="scan-results-face-empty"><Camera size={26} /></span>}
+            </div>
+            <h1>Your Style Matches</h1>
+            <p>Based on your scan, these uploaded looks suit you best.</p>
+          </header>
+
+          {uploadedLooks.length > 0 ? (
+            <div className="scan-results-grid">
+              {uploadedLooks.map((post, index) => (
+                <article
+                  className="scan-result-card"
+                  key={post.id || post.url || index}
+                  onClick={() => handleProductClick?.(post)}
+                >
+                  <div className="scan-result-media">
+                    <PostImage src={post.url || post.image_url} alt={post.title || 'Uploaded look'} />
+                  </div>
+                  <div className="scan-result-body">
+                    <h3>{post.title || 'Untitled design'}</h3>
+                    <span>Rs. {post.price || 0}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+          ) : (
+            <div className="scan-results-empty">
+              <Package size={30} />
+              <p>No uploaded looks yet</p>
+              <span>Once designs are uploaded, your matches will appear here.</span>
+            </div>
+          )}
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="ai-scan" className={`section ${activeSection === 'ai-scan' ? 'active' : 'hidden'}`}>
@@ -55,10 +222,10 @@ function CreateSection({ activeSection }) {
             <div className="scan-animation-container">
               <div className="scan-ring"></div>
               <div className="scan-image-wrap" style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--card-bg)' }}>
-                {(isScanning || scanProgress > 0) ? (
+                {(isScanning || scanProgress > 0) && capturedPhoto ? (
                   <img
-                    src="https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?q=80&w=600&auto=format&fit=crop"
-                    alt="Face Scan"
+                    src={capturedPhoto}
+                    alt="Your scan"
                     className="scan-image"
                     style={{ animation: 'fadeIn 1s ease-out' }}
                   />
@@ -137,7 +304,12 @@ function CreateSection({ activeSection }) {
               </div>
 
               {scanProgress >= 100 && (
-                <button className="btn-primary view-recommendations-btn" style={{ animation: 'fadeIn 0.5s ease-out' }}>
+                <button
+                  type="button"
+                  className="btn-primary view-recommendations-btn"
+                  style={{ animation: 'fadeIn 0.5s ease-out' }}
+                  onClick={() => setShowRecommendations(true)}
+                >
                   View Recommendations
                 </button>
               )}
@@ -146,39 +318,124 @@ function CreateSection({ activeSection }) {
         </div>
       </div>
 
-      {showCameraModal && (
-        <div className="modal-overlay" onClick={() => setShowCameraModal(false)} style={{ animation: 'fadeIn 0.3s ease-out' }}>
-          <div className="modal-content" onClick={e => e.stopPropagation()} style={{ animation: 'slideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1)', padding: '40px', maxWidth: '420px', borderRadius: '24px', background: 'var(--card-bg)', border: '1px solid var(--border)', boxShadow: '0 20px 40px rgba(0,0,0,0.1)' }}>
-            <button className="modal-close-btn" onClick={() => setShowCameraModal(false)} style={{ top: '20px', right: '20px' }}>
-              <X size={20} />
+      {showCameraModal && mode === 'preview' && (
+        <div className="scan-source-overlay" onClick={closeModal}>
+          <div className="scan-source-modal is-camera" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-label="Confirm photo">
+            <button type="button" className="scan-source-close" onClick={closeModal} aria-label="Close">
+              <X size={18} />
             </button>
-            
-            <div style={{ textAlign: 'center', marginBottom: '32px' }}>
-              <div style={{ width: '64px', height: '64px', background: 'rgba(var(--primary-rgb), 0.15)', borderRadius: '20px', display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto 16px', color: 'var(--primary)' }}>
-                <Camera size={32} />
-              </div>
-              <h2 style={{ fontSize: '1.5rem', fontWeight: '700', color: 'var(--text-primary)', marginBottom: '8px' }}>Select Photo Source</h2>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '0.95rem' }}>Upload or take a picture so our AI can analyze your style profile.</p>
+
+            <div className="scan-camera-stage">
+              <img src={capturedPhoto} alt="Selected" className="scan-preview-image" />
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <button 
-                className="liquid-btn" 
-                onClick={handleSelectSource} 
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '16px', fontSize: '1.05rem', fontWeight: '600', borderRadius: '16px', border: 'none', cursor: 'pointer' }}
-              >
-                <Camera size={20} /> Take a Photo
+            <div className="scan-preview-actions">
+              <button type="button" className="scan-camera-back" onClick={() => { setMode('choose'); setCapturedPhoto(null); }}>
+                Change photo
               </button>
-              
-              <button 
-                onClick={handleSelectSource} 
-                style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '12px', padding: '16px', fontSize: '1.05rem', fontWeight: '600', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-primary)', borderRadius: '16px', cursor: 'pointer', transition: 'all 0.2s' }}
-                onMouseEnter={e => { e.currentTarget.style.background = 'var(--hover-bg)'; e.currentTarget.style.borderColor = 'var(--text-secondary)'; }}
-                onMouseLeave={e => { e.currentTarget.style.background = 'transparent'; e.currentTarget.style.borderColor = 'var(--border)'; }}
-              >
-                <ImageIcon size={20} /> Choose from Gallery
+              <button type="button" className="scan-start-btn" onClick={beginScan}>
+                <Play size={17} fill="currentColor" /> Start Scan
               </button>
             </div>
+
+            <p className="scan-source-note">
+              <Sparkles size={13} /> Happy with this photo? Start the scan when you're ready.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {showCameraModal && mode === 'camera' && (
+        <div className="scan-source-overlay" onClick={closeModal}>
+          <div
+            className="scan-source-modal is-camera"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Camera"
+          >
+            <button type="button" className="scan-source-close" onClick={closeModal} aria-label="Close">
+              <X size={18} />
+            </button>
+
+            <div className="scan-camera-stage">
+              <video ref={videoRef} playsInline muted autoPlay className="scan-camera-video" />
+              <div className="scan-camera-frame" aria-hidden="true" />
+            </div>
+
+            <div className="scan-camera-actions">
+              <button type="button" className="scan-camera-back" onClick={() => { stopCamera(); setMode('choose'); }}>
+                Back
+              </button>
+              <button type="button" className="scan-camera-shutter" onClick={capturePhoto} aria-label="Capture photo">
+                <span />
+              </button>
+              <span className="scan-camera-spacer" aria-hidden="true" />
+            </div>
+
+            <p className="scan-source-note">
+              <Sparkles size={13} /> Centre your face in the frame, then tap the shutter.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {showCameraModal && mode === 'choose' && (
+        <div className="scan-source-overlay" onClick={closeModal}>
+          <div
+            className="scan-source-modal"
+            onClick={e => e.stopPropagation()}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="scan-source-title"
+          >
+            <button type="button" className="scan-source-close" onClick={closeModal} aria-label="Close">
+              <X size={18} />
+            </button>
+
+            <div className="scan-source-head">
+              <div className="scan-source-icon">
+                <Camera size={26} />
+                <span className="scan-source-icon-pulse" aria-hidden="true" />
+              </div>
+              <h2 id="scan-source-title">Select Photo Source</h2>
+              <p>Upload or take a picture so our AI can analyse your style profile.</p>
+            </div>
+
+            <div className="scan-source-options">
+              <button type="button" className="scan-source-option is-primary" onClick={openCamera}>
+                <span className="scan-source-option-icon"><Camera size={20} /></span>
+                <span className="scan-source-option-text">
+                  <strong>Take a Photo</strong>
+                  <small>Use your camera right now</small>
+                </span>
+                <ChevronRight size={18} className="scan-source-option-arrow" />
+              </button>
+
+              <button type="button" className="scan-source-option" onClick={() => galleryInputRef.current?.click()}>
+                <span className="scan-source-option-icon"><ImageIcon size={20} /></span>
+                <span className="scan-source-option-text">
+                  <strong>Choose from Gallery</strong>
+                  <small>Pick an existing photo</small>
+                </span>
+                <ChevronRight size={18} className="scan-source-option-arrow" />
+              </button>
+              <input
+                ref={galleryInputRef}
+                type="file"
+                accept="image/*"
+                onChange={handleGalleryFile}
+                hidden
+              />
+            </div>
+
+            {cameraError && (
+              <p className="scan-source-error">{cameraError}</p>
+            )}
+
+            <p className="scan-source-note">
+              <Sparkles size={13} /> Good lighting and a front-facing photo give the best results.
+            </p>
           </div>
         </div>
       )}

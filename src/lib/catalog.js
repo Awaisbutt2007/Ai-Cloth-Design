@@ -1,0 +1,216 @@
+const img = (id) => `https://images.unsplash.com/${id}?q=80&w=600&auto=format&fit=crop`;
+
+export const CATALOG = [
+  {
+    id: 'oversized-purple-tee',
+    tags: ['unisex','summer','casual','fashion'],
+    title: 'Oversized Purple Tee',
+    price: 29.99,
+    category: 't-shirts',
+    gender: 'unisex',
+    color: 'purple',
+    size: 'L',
+    popularity: 98,
+    rating: 4.8,
+    createdAt: '2026-08-20',
+    image: img('photo-1521572163474-6864f9cf17ab'),
+  },
+  {
+    id: 'black-crop-top',
+    tags: ['women','summer','casual','party','fashion'],
+    title: 'Black Crop Top',
+    price: 24.99,
+    category: 'shirts',
+    gender: 'women',
+    color: 'black',
+    size: 'M',
+    popularity: 91,
+    rating: 4.6,
+    createdAt: '2026-08-22',
+    image: img('photo-1503342217505-b0a15ec3261c'),
+  },
+  {
+    id: 'beige-hoodie',
+    tags: ['men','autumn','casual','outerwear'],
+    title: 'Beige Hoodie',
+    price: 49.99,
+    category: 'hoodies',
+    gender: 'men',
+    color: 'white',
+    size: 'L',
+    popularity: 88,
+    rating: 4.7,
+    createdAt: '2026-08-18',
+    image: img('photo-1556821840-3a63f95609a7'),
+  },
+  {
+    id: 'white-summer-dress',
+    tags: ['women','summer','casual','party','fashion'],
+    title: 'White Summer Dress',
+    price: 39.99,
+    category: 'dresses',
+    gender: 'women',
+    color: 'white',
+    size: 'S',
+    popularity: 95,
+    rating: 4.9,
+    createdAt: '2026-08-24',
+    image: img('photo-1595777457583-95e059d581b8'),
+  },
+  {
+    id: 'classic-black-jacket',
+    tags: ['men','winter','outerwear','formal'],
+    title: 'Classic Black Jacket',
+    price: 69.99,
+    category: 'jackets',
+    gender: 'men',
+    color: 'black',
+    size: 'M',
+    popularity: 84,
+    rating: 4.5,
+    createdAt: '2026-08-12',
+    image: img('photo-1551028719-00167b16eac5'),
+  },
+  {
+    id: 'cargo-pants',
+    tags: ['unisex','autumn','casual','sportswear'],
+    title: 'Cargo Pants',
+    price: 44.99,
+    category: 'pants',
+    gender: 'unisex',
+    color: 'green',
+    size: 'L',
+    popularity: 79,
+    rating: 4.4,
+    createdAt: '2026-08-15',
+    image: img('photo-1517445312882-bc9910d016b7'),
+  },
+  {
+    id: 'white-sneakers',
+    tags: ['unisex','spring','footwear','sportswear'],
+    title: 'White Sneakers',
+    price: 59.99,
+    category: 'shoes',
+    gender: 'unisex',
+    color: 'white',
+    size: '42',
+    popularity: 93,
+    rating: 4.8,
+    createdAt: '2026-08-21',
+    image: img('photo-1549298916-b41d501d3772'),
+  },
+  {
+    id: 'street-cap',
+    tags: ['unisex','summer','accessories','casual'],
+    title: 'Street Cap',
+    price: 19.99,
+    category: 'accessories',
+    gender: 'unisex',
+    color: 'black',
+    size: 'One Size',
+    popularity: 72,
+    rating: 4.3,
+    createdAt: '2026-08-10',
+    image: img('photo-1588850561407-ed78c282e89b'),
+  },
+  {
+    id: 'polarized-sunglasses',
+    tags: ['unisex','summer','accessories'],
+    title: 'Polarized Sunglasses',
+    price: 24.99,
+    category: 'accessories',
+    gender: 'unisex',
+    color: 'black',
+    size: 'One Size',
+    popularity: 68,
+    rating: 4.2,
+    createdAt: '2026-08-08',
+    image: img('photo-1511499767150-a48a237f0083'),
+  },
+  {
+    id: 'denim-shirt',
+    tags: ['men','spring','casual','fashion'],
+    title: 'Denim Shirt',
+    price: 34.99,
+    category: 'shirts',
+    gender: 'men',
+    color: 'blue',
+    size: 'M',
+    popularity: 66,
+    rating: 4.1,
+    createdAt: '2026-08-05',
+    image: img('photo-1602810318383-e386cc2a3ccf'),
+  },
+  {
+    id: 'pink-knit-sweater',
+    tags: ['women','winter','casual','outerwear'],
+    title: 'Pink Knit Sweater',
+    price: 54.99,
+    category: 'hoodies',
+    gender: 'women',
+    color: 'pink',
+    size: 'S',
+    popularity: 74,
+    rating: 4.6,
+    createdAt: '2026-08-16',
+    image: img('photo-1576566588028-4147f3842f27'),
+  },
+  {
+    id: 'leather-boots',
+    tags: ['men','winter','footwear','formal'],
+    title: 'Leather Boots',
+    price: 89.99,
+    category: 'shoes',
+    gender: 'men',
+    color: 'black',
+    size: '43',
+    popularity: 81,
+    rating: 4.7,
+    createdAt: '2026-08-02',
+    image: img('photo-1608256246200-53e635b5b65f'),
+  },
+];
+
+/**
+ * Taxonomy values a product belongs to. Demo items carry an explicit `tags`
+ * list; a real uploaded post only has the single `category` picked in the
+ * upload form, so that becomes its one tag.
+ */
+export function getProductTags(product) {
+  if (!product || typeof product !== 'object') return [];
+  if (Array.isArray(product.tags) && product.tags.length) return product.tags;
+  const category = product.category || product.categories;
+  if (!category) return [];
+  return Array.isArray(category) ? category : [String(category).toLowerCase()];
+}
+
+export const FILTER_COLORS = [
+  { value: 'purple', hex: '#8b5cf6' },
+  { value: 'pink', hex: '#ec4899' },
+  { value: 'blue', hex: '#3b82f6' },
+  { value: 'cyan', hex: '#06b6d4' },
+  { value: 'green', hex: '#22c55e' },
+  { value: 'yellow', hex: '#eab308' },
+  { value: 'white', hex: '#ffffff' },
+  { value: 'grey', hex: '#9ca3af' },
+  { value: 'black', hex: '#111827' },
+];
+
+export const SORT_OPTIONS = [
+  { value: 'popular', label: 'Most Popular' },
+  { value: 'newest', label: 'Newest First' },
+  { value: 'price-low', label: 'Price: Low to High' },
+  { value: 'price-high', label: 'Price: High to Low' },
+  { value: 'rating', label: 'Top Rated' },
+];
+
+export const POPULAR_SEARCHES = [
+  'Casual Wear',
+  'Summer Collection',
+  'Party Wear',
+  'Street Style',
+];
+
+export function findProduct(id) {
+  return CATALOG.find((product) => product.id === id) || null;
+}

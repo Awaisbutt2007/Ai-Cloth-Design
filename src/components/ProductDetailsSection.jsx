@@ -1,22 +1,111 @@
 import React, { useState, useEffect } from 'react';
 import { Heart, Star, Lightbulb, Minus, Plus, Truck, RefreshCcw, ShieldCheck, Sparkles, ArrowLeft } from 'lucide-react';
 import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
+import { addToCart } from '../lib/cart';
 
-export default function ProductDetailsSection({ activeSection, product, handleSectionClick }) {
+/** Real images for a product, de-duplicated. Never padded out to a fixed count. */
+function getProductImages(product) {
+  const raw = typeof product === 'string'
+    ? [product]
+    : (Array.isArray(product?.images) && product.images.length > 0 ? product.images : [product?.url]);
+
+  const seen = new Set();
+  const images = [];
+  for (const item of raw) {
+    if (!item) continue;
+    const fixed = repairImageUrl(item);
+    if (seen.has(fixed)) continue;
+    seen.add(fixed);
+    images.push(fixed);
+  }
+  return images;
+}
+
+function productKey(item) {
+  if (!item) return '';
+  if (typeof item === 'string') return item;
+  return item.id || item.url || item.title || '';
+}
+
+export default function ProductDetailsSection({
+  activeSection, product, handleSectionClick, onNotify, posts, onNavigate,
+}) {
   const [selectedSize, setSelectedSize] = useState('M');
   const [qty, setQty] = useState(1);
   const [activeImage, setActiveImage] = useState(null);
+  const [slideDirection, setSlideDirection] = useState(null);
+
+  const isOpen = activeSection === 'product-details' && !!product;
+  const list = Array.isArray(posts) ? posts : [];
+  const currentIndex = list.findIndex((item) => productKey(item) === productKey(product));
+
+  const goToSibling = React.useCallback((delta) => {
+    if (currentIndex < 0) return false;
+    const next = list[currentIndex + delta];
+    if (!next) return false;
+    setSlideDirection(delta > 0 ? 'next' : 'prev');
+    onNavigate?.(next);
+    return true;
+  }, [currentIndex, list, onNavigate]);
+
+  // Arrow keys on desktop, wheel / vertical swipe on touch.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const onKeyDown = (e) => {
+      if (e.target?.closest?.('input, textarea, select')) return;
+      if (e.key === 'ArrowDown') { if (goToSibling(1)) e.preventDefault(); }
+      else if (e.key === 'ArrowUp') { if (goToSibling(-1)) e.preventDefault(); }
+    };
+
+    let lastMove = 0;
+    const throttled = (delta) => {
+      const now = Date.now();
+      if (now - lastMove < 650) return false;
+      const moved = goToSibling(delta);
+      if (moved) lastMove = now;
+      return moved;
+    };
+
+    // Only swap ads at the scroll edges, otherwise a normal swipe to read the
+    // page would jump away from the product the user is still looking at.
+    const atBottom = () => (
+      window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 48
+    );
+    const atTop = () => window.scrollY <= 12;
+
+    let touchStartY = null;
+    const onTouchStart = (e) => { touchStartY = e.touches[0]?.clientY ?? null; };
+    const onTouchEnd = (e) => {
+      if (touchStartY === null) return;
+      const endY = e.changedTouches[0]?.clientY ?? touchStartY;
+      const diff = touchStartY - endY;
+      touchStartY = null;
+      if (Math.abs(diff) < 70) return;
+      if (diff > 0 && atBottom()) throttled(1);
+      else if (diff < 0 && atTop()) throttled(-1);
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('touchstart', onTouchStart, { passive: true });
+    window.addEventListener('touchend', onTouchEnd, { passive: true });
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchend', onTouchEnd);
+    };
+  }, [isOpen, goToSibling]);
+
+  // Clear the slide class once the animation has played.
+  useEffect(() => {
+    if (!slideDirection) return;
+    const timer = window.setTimeout(() => setSlideDirection(null), 400);
+    return () => window.clearTimeout(timer);
+  }, [slideDirection, product]);
 
   useEffect(() => {
     if (product) {
-      let rawImages = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
-      let images = rawImages.map(x => repairImageUrl(x));
-      if (images.length === 1) {
-        images = [images[0], images[0], images[0]];
-      } else if (images.length === 2) {
-        images = [images[0], images[1], images[0]];
-      }
-      setActiveImage(images[0]);
+      setActiveImage(getProductImages(product)[0] || null);
     }
   }, [product]);
 
@@ -24,50 +113,55 @@ export default function ProductDetailsSection({ activeSection, product, handleSe
 
   const title = typeof product === 'string' ? 'Custom Design' : (product.title || 'Custom Design');
   const price = typeof product === 'string' ? 'Custom' : `Rs. ${product.price || 0}`;
-  let rawImages = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
-  let images = rawImages.map(x => repairImageUrl(x));
   const isNew = typeof product === 'object' && product.isNew;
 
-  if (images.length === 1) {
-    images = [images[0], images[0], images[0]];
-  } else if (images.length === 2) {
-    images = [images[0], images[1], images[0]];
-  }
+  // Show exactly what was uploaded — no padding, no duplicates.
+  const images = getProductImages(product);
+
+  const handleAddToCart = () => {
+    const { added } = addToCart({
+      id: typeof product === 'object' ? (product.id || product.url || product.title) : product,
+      title,
+      price: typeof product === 'object' ? Number(product.price || 0) : 0,
+      image: images[0],
+      size: selectedSize,
+      color: (typeof product === 'object' && product.color) || '—',
+    }, qty);
+
+    onNotify?.(added ? `${title} added to cart.` : `${title} is already in your cart.`);
+  };
 
   return (
     <section id="product-details" className={`section ${activeSection === 'product-details' ? 'active' : 'hidden'}`}>
       <div className="dashboard-overview-container" style={{ maxWidth: '1200px', margin: '0 auto', paddingTop: '20px' }}>
         
-        <div 
-          style={{ display: 'inline-flex', alignItems: 'center', marginBottom: '24px', cursor: 'pointer', color: 'var(--text-secondary)', fontWeight: '500', transition: 'color 0.2s' }} 
-          onClick={(e) => handleSectionClick(e, 'home')}
-          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
-          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
-        >
-          <ArrowLeft size={20} style={{ marginRight: '8px' }} />
+        <button type="button" className="section-back-btn" onClick={(e) => handleSectionClick(e, 'home')}>
+          <span className="section-back-icon"><ArrowLeft size={17} /></span>
           <span>Back to Home</span>
-        </div>
+        </button>
 
-        <div className="product-modal-content" style={{ maxWidth: '100%', margin: '0', boxShadow: 'none', borderRadius: '24px', padding: '0', border: '1px solid var(--border-color)', overflow: 'hidden', maxHeight: 'none' }}>
+        <div className={`product-modal-content ${slideDirection ? `is-slide-${slideDirection}` : ''}`} key={productKey(product)} style={{ maxWidth: '100%', margin: '0', boxShadow: 'none', borderRadius: '24px', padding: '0', border: '1px solid var(--border-color)', overflow: 'hidden', maxHeight: 'none' }}>
           
           <div className="product-modal-body" style={{ padding: '40px' }}>
             {/* Left Gallery */}
             <div className="product-modal-gallery">
-              <div className="product-thumbnails">
-                {images.slice(0, 3).map((img, i) => (
-                  <div 
-                    key={i} 
-                    className={`thumbnail-img-wrap ${activeImage === img ? 'active' : ''}`}
-                    onClick={() => setActiveImage(img)}
-                  >
-                    {img.startsWith('data:video') || img.match(/\.(mp4|webm)$/) ? (
-                      <video src={img} />
-                    ) : (
-                      <img src={img} alt={`Thumb ${i+1}`} onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
-                    )}
-                  </div>
-                ))}
-              </div>
+              {images.length > 1 && (
+                <div className="product-thumbnails">
+                  {images.map((img, i) => (
+                    <div
+                      key={img}
+                      className={`thumbnail-img-wrap ${activeImage === img ? 'active' : ''}`}
+                      onClick={() => setActiveImage(img)}
+                    >
+                      {img.startsWith('data:video') || img.match(/\.(mp4|webm)$/) ? (
+                        <video src={img} />
+                      ) : (
+                        <img src={img} alt={`Thumb ${i+1}`} onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
               <div className="product-main-image-wrap">
                 {activeImage && (activeImage.startsWith('data:video') || activeImage.match(/\.(mp4|webm)$/)) ? (
                   <video src={activeImage} autoPlay loop muted className="product-main-image" />
@@ -136,7 +230,7 @@ export default function ProductDetailsSection({ activeSection, product, handleSe
               </div>
 
               <div className="pm-actions">
-                <button className="pm-add-to-cart">
+                <button className="pm-add-to-cart" type="button" onClick={handleAddToCart}>
                   Add to Cart
                 </button>
                 <button className="pm-wishlist-btn">

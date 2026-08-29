@@ -9,12 +9,8 @@ export default function ProductDetailsModal({ product, onClose }) {
   let images = typeof product === 'string' ? [product] : (product.images && product.images.length > 0 ? product.images : [product.url]);
   const isNew = typeof product === 'object' && product.isNew;
 
-  // Make sure we have at least 3 thumbnails for the layout if the user uploaded less
-  if (images.length === 1) {
-    images = [images[0], images[0], images[0]];
-  } else if (images.length === 2) {
-    images = [images[0], images[1], images[0]];
-  }
+  // Show exactly what was uploaded — never pad the rail out with duplicates.
+  images = images.filter((img, i) => img && images.indexOf(img) === i);
 
   const [selectedSize, setSelectedSize] = useState('M');
   const [qty, setQty] = useState(1);
@@ -30,10 +26,10 @@ export default function ProductDetailsModal({ product, onClose }) {
         <div className="product-modal-body">
           {/* Left Gallery */}
           <div className="product-modal-gallery">
-            <div className="product-thumbnails">
-              {images.slice(0, 3).map((img, i) => (
-                <div 
-                  key={i} 
+            <div className="product-thumbnails" hidden={images.length <= 1}>
+              {images.map((img, i) => (
+                <div
+                  key={img}
                   className={`thumbnail-img-wrap ${activeImage === img ? 'active' : ''}`}
                   onClick={() => setActiveImage(img)}
                 >

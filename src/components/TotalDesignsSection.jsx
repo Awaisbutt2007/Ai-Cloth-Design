@@ -1,6 +1,8 @@
 import React from 'react';
 import { Sparkles, Shirt, Lightbulb, TrendingUp, Grid, Heart, Star, Clock } from 'lucide-react';
 import { repairImageUrl, repairPostImages, DEFAULT_POST_PLACEHOLDER } from '../constants';
+import PostImage from './PostImage';
+import { useLikedPostIds, toggleLike, getPostId } from '../lib/reactions';
 
 function getAllPosts() {
   const seenIds = new Set();
@@ -38,6 +40,7 @@ function getAllPosts() {
 }
 
 function TotalDesignsSection({ activeSection, handleSectionClick, handleProductClick, posts }) {
+  const likedPostIds = useLikedPostIds();
 
   const allPosts = posts || [];
   const quickActions = [
@@ -118,9 +121,15 @@ function TotalDesignsSection({ activeSection, handleSectionClick, handleProductC
                 return (
                   <div key={idx} className="trending-product-card" onClick={() => handleProductClick(post)}>
                     <div className="trending-product-image-wrap">
-                      <img src={imgSrc} alt={title} className="trending-product-image" loading="lazy" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
-                      <button className="trending-product-favorite" onClick={(e) => e.stopPropagation()}>
-                        <Heart size={18} />
+                      <PostImage src={imgSrc} alt={title} className="trending-product-image" />
+                      <button
+                        type="button"
+                        className={`trending-product-favorite ${likedPostIds.has(getPostId(post)) ? 'is-liked' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleLike(post); }}
+                        aria-label={likedPostIds.has(getPostId(post)) ? 'Unlike' : 'Like'}
+                        aria-pressed={likedPostIds.has(getPostId(post))}
+                      >
+                        <Heart size={18} fill={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'none'} color={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'currentColor'} />
                       </button>
                     </div>
                     <div className="trending-product-info">
@@ -164,9 +173,15 @@ function TotalDesignsSection({ activeSection, handleSectionClick, handleProductC
                 return (
                   <div key={`new-${idx}`} className="trending-product-card" onClick={() => handleProductClick(post)}>
                     <div className="trending-product-image-wrap">
-                      <img src={imgSrc} alt={title} className="trending-product-image" loading="lazy" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
-                      <button className="trending-product-favorite" onClick={(e) => e.stopPropagation()}>
-                        <Heart size={18} />
+                      <PostImage src={imgSrc} alt={title} className="trending-product-image" />
+                      <button
+                        type="button"
+                        className={`trending-product-favorite ${likedPostIds.has(getPostId(post)) ? 'is-liked' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleLike(post); }}
+                        aria-label={likedPostIds.has(getPostId(post)) ? 'Unlike' : 'Like'}
+                        aria-pressed={likedPostIds.has(getPostId(post))}
+                      >
+                        <Heart size={18} fill={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'none'} color={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'currentColor'} />
                       </button>
                     </div>
                     <div className="trending-product-info">
@@ -207,9 +222,15 @@ function TotalDesignsSection({ activeSection, handleSectionClick, handleProductC
                 return (
                   <div key={idx} className="trending-product-card" onClick={() => handleProductClick(post)}>
                     <div className="trending-product-image-wrap">
-                      <img src={imgSrc} alt={title} className="trending-product-image" loading="lazy" onError={(e) => { e.currentTarget.src = DEFAULT_POST_PLACEHOLDER; }} />
-                      <button className="trending-product-favorite" onClick={(e) => e.stopPropagation()}>
-                        <Heart size={18} />
+                      <PostImage src={imgSrc} alt={title} className="trending-product-image" />
+                      <button
+                        type="button"
+                        className={`trending-product-favorite ${likedPostIds.has(getPostId(post)) ? 'is-liked' : ''}`}
+                        onClick={(e) => { e.stopPropagation(); toggleLike(post); }}
+                        aria-label={likedPostIds.has(getPostId(post)) ? 'Unlike' : 'Like'}
+                        aria-pressed={likedPostIds.has(getPostId(post))}
+                      >
+                        <Heart size={18} fill={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'none'} color={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'currentColor'} />
                       </button>
                     </div>
                     <div className="trending-product-info">

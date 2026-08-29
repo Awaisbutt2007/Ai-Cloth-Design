@@ -1,12 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { UploadCloud, Info, FileText, ChevronDown, Image as ImageIcon, X, ArrowRight, ArrowLeft, CheckCircle } from 'lucide-react';
 import { uploadPost } from '../lib/posts';
+import CategorySelect from './CategorySelect';
 
 export default function UploadedImagesSection({ activeSection, userEmail, onUploadSuccess, onUploadError }) {
   const [title, setTitle] = useState('');
   const [category, setCategory] = useState('');
   const [price, setPrice] = useState('');
   const [description, setDescription] = useState('');
+  const [stock, setStock] = useState('');
   const [showGuide, setShowGuide] = useState(false);
   const [guideStep, setGuideStep] = useState(1);
   const [selectedFiles, setSelectedFiles] = useState([]);
@@ -57,6 +59,7 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
         category,
         price,
         description,
+        stock,
         authorEmail: userKey,
         authorName,
         authorHandle,
@@ -67,6 +70,7 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
       setCategory('');
       setPrice('');
       setDescription('');
+      setStock('');
       setSelectedFiles([]);
 
       onUploadSuccess?.();
@@ -214,33 +218,41 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
             
             <div className="details-row-2">
               <div className="form-group">
-                <label>Category</label>
-                <div className="select-wrapper">
-                  <select 
-                    value={category} 
-                    onChange={(e) => setCategory(e.target.value)}
-                    className="theme-select"
-                  >
-                    <option value="" disabled>Select Category</option>
-                    <option value="fashion">Fashion</option>
-                    <option value="design">Design</option>
-                    <option value="texture">Texture</option>
-                  </select>
-                  <ChevronDown size={16} className="select-icon" />
-                </div>
+                <label htmlFor="upload-category">Category</label>
+                <CategorySelect
+                  id="upload-category"
+                  value={category}
+                  onChange={(e) => setCategory(e.target.value)}
+                />
               </div>
 
               <div className="form-group">
                 <label>Price ($)</label>
-                <input 
-                  type="number" 
-                  placeholder="e.g. 29.99" 
+                <input
+                  type="number"
+                  placeholder="e.g. 29.99"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   min="0"
                   step="0.01"
                 />
               </div>
+            </div>
+
+            <div className="form-group" style={{ marginBottom: '24px' }}>
+              <label htmlFor="upload-stock">Stock (available quantity)</label>
+              <input
+                id="upload-stock"
+                type="number"
+                placeholder="e.g. 25"
+                value={stock}
+                onChange={(e) => setStock(e.target.value)}
+                min="0"
+                step="1"
+              />
+              <span className="upload-field-hint">
+                How many pieces you have. Leave at 0 if you are not selling this design.
+              </span>
             </div>
 
             <div className="form-group" style={{ marginBottom: '24px' }}>
@@ -264,6 +276,7 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
                   setCategory('');
                   setPrice('');
                   setDescription('');
+                  setStock('');
                   setSelectedFiles([]);
                 }}
               >
