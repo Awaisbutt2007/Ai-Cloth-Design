@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { AlertCircle, AlertTriangle, ArrowLeft, Check, Info, X, Eye, EyeOff } from 'lucide-react';
-import { useGoogleLogin } from '@react-oauth/google';
-import emailjs from '@emailjs/browser';
+import { isAuthProviderEnabled, supabase } from '../lib/supabaseClient';
 
 const GoogleIcon = () => (
   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
@@ -12,11 +11,13 @@ const GoogleIcon = () => (
   </svg>
 );
 
-function Login({ onLogin }) {
+function isAuthRateLimitError(error) {
+  return error?.status === 429 || /rate.?limit|too many requests/i.test(error?.message || '');
+}
+
+function Login({ onLogin, onDemoLogin, recoveryMode = false, onPasswordResetSuccess }) {
   const [isRightPanelActive, setIsRightPanelActive] = useState(false);
   const [view, setView] = useState('login'); 
-  const [signupView, setSignupView] = useState('form');
-
   const [loginEmail, setLoginEmail] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [showLoginPassword, setShowLoginPassword] = useState(false);
@@ -28,47 +29,30 @@ function Login({ onLogin }) {
   const [showSignupPassword, setShowSignupPassword] = useState(false);
   
   const [forgotEmail, setForgotEmail] = useState('');
-  const [otp, setOtp] = useState('');
-  const [generatedOtp, setGeneratedOtp] = useState('');
-  
   const [resetPassword, setResetPassword] = useState('');
   const [confirmResetPassword, setConfirmResetPassword] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
-  const [isNewGoogleAccount, setIsNewGoogleAccount] = useState(false);
   const [toastList, setToastList] = useState([]);
   const toastIdRef = useRef(0);
   const toastTimerRef = useRef({});
-  const googleAuthModeRef = useRef('login');
 
   useEffect(() => {
-    if (!localStorage.getItem('mockUsers')) {
-      localStorage.setItem('mockUsers', JSON.stringify([
-        { name: 'Admin User', email: 'admin@example.com', password: 'password123', phone: '+92 300 1234567' }
-      ]));
-    }
-  }, []);
+    if (recoveryMode) setView('reset-password');
+  }, [recoveryMode]);
 
-  const enterApp = (userData, isNewAccount = false) => {
-    const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    let user = mockUsers.find(u => u.email === userData.email);
-
-    if (isNewAccount) {
-      if (!user) {
-        mockUsers.push(userData);
-        localStorage.setItem('mockUsers', JSON.stringify(mockUsers));
-        user = userData;
-      }
-    } else if (!user) {
-      return;
-    }
-
-    setLoginEmail(''); setLoginPassword('');
-    setSignupName(''); setSignupEmail(''); setSignupPhone(''); setSignupPassword('');
-    setForgotEmail(''); setOtp(''); setGeneratedOtp('');
-    setResetPassword(''); setConfirmResetPassword('');
-    setView('login');
-    if (onLogin) onLogin(user);
+  const finishAuthLogin = async (authUser) => {
+    const metadata = authUser.user_metadata || {};
+    const user = {
+      id: authUser.id,
+      name: metadata.name || metadata.full_name || authUser.email?.split('@')[0] || 'Fashion Creator',
+      email: authUser.email || '',
+      phone: metadata.phone || authUser.phone || '',
+      handle: metadata.handle || `@${(authUser.email?.split('@')[0] || 'fashionista').replace(/[^a-z0-9_]/gi, '').slice(0, 24)}`,
+      bio: metadata.bio || '',
+      photo: metadata.photo || metadata.avatar_url || null,
+    };
+    onLogin?.(user);
   };
 
   const removeToast = (id) => {
@@ -104,7 +88,6 @@ function Login({ onLogin }) {
         desc = '';
       } else {
         title = 'Success';
-        desc = '';
       }
     } else if (type === 'error') {
       title = 'Error';
@@ -124,68 +107,25 @@ function Login({ onLogin }) {
     }, 3500);
   };
 
-  const handleGoogleLogin = useGoogleLogin({
-    onSuccess: async (codeResponse) => {
-      try {
-        const userInfoRes = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-          headers: { Authorization: `Bearer ${codeResponse.access_token}` },
-        });
-        const userInfo = await userInfoRes.json();
-
-        const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-        const existingUser = mockUsers.find(u => u.email === userInfo.email);
-        const authMode = googleAuthModeRef.current;
-
-        if (authMode === 'login') {
-          if (!existingUser) {
-            showToast('This email does not exist. Please create an account.');
-            return;
-          }
-
-          setIsNewGoogleAccount(false);
-          showToast('Login successful!', 'success');
-          setTimeout(() => enterApp(existingUser), 500);
-          return;
-        }
-
-        if (existingUser) {
-          showToast('This email is already registered.');
-          return;
-        }
-
-        let givenName = userInfo.given_name || userInfo.name || 'user';
-        givenName = givenName.replace(/[^a-zA-Z0-9]/g, '').toLowerCase();
-        let handleString = givenName;
-        // Ensure at least some numbers
-        handleString += Math.floor(100 + Math.random() * 900);
-        while (handleString.length < 8) {
-          handleString += Math.floor(Math.random() * 10);
-        }
-
-        const googleUserData = {
-          name: userInfo.name || 'Google User',
-          email: userInfo.email,
-          handle: `@${handleString}`,
-          password: `GoogleAuth!${Math.floor(100000 + Math.random() * 900000)}`,
-          phone: ''
-        };
-
-        setIsNewGoogleAccount(true);
-        showToast('Account created successfully!', 'success');
-        setTimeout(() => enterApp(googleUserData, true), 500);
-      } catch (err) {
-        showToast('Google Login Failed. Could not fetch user details.');
+  const handleGoogleLogin = async () => {
+    try {
+      if (!await isAuthProviderEnabled('google')) {
+        showToast('Google sign-in is not enabled for this app. Configure the Google provider in Supabase Auth first.');
+        return;
       }
-    },
-    onError: () => {
-      showToast('Google Login Failed.');
+
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) showToast(error.message || 'Google sign-in could not be started.');
+    } catch (error) {
+      showToast(error?.message || 'Google sign-in could not be started.');
     }
-  });
+  };
 
   const goToLoginView = () => {
     setForgotEmail('');
-    setOtp('');
-    setGeneratedOtp('');
     setResetPassword('');
     setConfirmResetPassword('');
     setIsLoading(false);
@@ -194,29 +134,13 @@ function Login({ onLogin }) {
 
   const openForgotView = () => {
     setForgotEmail('');
-    setOtp('');
-    setGeneratedOtp('');
     setResetPassword('');
     setConfirmResetPassword('');
     setIsLoading(false);
     setView('forgot');
   };
 
-  const goBackFromOtp = () => {
-    setOtp('');
-    setGeneratedOtp('');
-    setForgotEmail('');
-    setView('forgot');
-  };
-
-  const goBackFromSignupOtp = () => {
-    setOtp('');
-    setGeneratedOtp('');
-    setSignupView('form');
-  };
-
-  const triggerGoogleAuth = (mode) => {
-    googleAuthModeRef.current = mode;
+  const triggerGoogleAuth = () => {
     handleGoogleLogin();
   };
 
@@ -227,166 +151,174 @@ function Login({ onLogin }) {
     </button>
   );
 
-  const handleSignupSubmit = (e) => {
+  const handleSignupSubmit = async (e) => {
     e.preventDefault();
-    const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    
-    if (mockUsers.find(u => u.email === signupEmail)) {
-      showToast('This email is already registered.');
-      return;
-    }
-
     setIsLoading(true);
-    const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-    setGeneratedOtp(newOtp);
-    
-    const templateParams = {
-      to_email: signupEmail,
-      to_name: signupName,
-      otp: newOtp
-    };
+    const baseHandle = signupName.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 20) || 'fashionista';
+    const handle = `@${baseHandle}${Math.floor(100 + Math.random() * 900)}`;
 
-    // EmailJS credentials
-    const SERVICE_ID = 'service_eqn0nbl';
-    const TEMPLATE_ID = 'template_rygjexr';
-    const PUBLIC_KEY = 'aNNo0vsto6b6Xfu4t';
-
-    emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY)
-      .then((response) => {
-        setIsLoading(false);
-        showToast('OTP sent to your email successfully!', 'success');
-        setSignupView('otp');
-      })
-      .catch((error) => {
-        setIsLoading(false);
-        console.error('EmailJS Error:', error);
-        showToast('Failed to send OTP. Please check your EmailJS configuration.', 'error');
+    try {
+      const { data, error } = await supabase.auth.signUp({
+        email: signupEmail.trim().toLowerCase(),
+        password: signupPassword,
+        options: {
+          data: { name: signupName.trim(), phone: signupPhone.trim(), handle },
+          emailRedirectTo: window.location.origin,
+        },
       });
+      if (error) {
+        if (isAuthRateLimitError(error)) {
+          showToast('Too many email requests. Wait before trying again; repeated signup attempts will not bypass the provider limit.');
+        } else {
+          showToast(error.message.includes('already registered') ? 'This email is already registered. Please sign in.' : error.message);
+        }
+        return;
+      }
+      if (data.user?.identities?.length === 0) {
+        showToast('This email is already registered. Please sign in.');
+        return;
+      }
+      if (data.session) {
+        await finishAuthLogin(data.user);
+      } else {
+        setSignupEmail('');
+        setSignupPassword('');
+        setIsRightPanelActive(false);
+        setView('login');
+        showToast('Check your email to confirm your account, then sign in.', 'success');
+      }
+    } catch (error) {
+      showToast(error?.message || 'Could not create your account. Please try again.');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
-  const handleSignupOtpSubmit = (e) => {
+  const handleLoginSubmit = async (e) => {
     e.preventDefault();
-    if (otp === generatedOtp) {
-      const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-      let baseHandle = signupName.toLowerCase().replace(/[^a-zA-Z0-9]/g, '');
-      if (!baseHandle) baseHandle = 'user';
-      baseHandle += Math.floor(100 + Math.random() * 900);
-      while (baseHandle.length < 8) {
-        baseHandle += Math.floor(Math.random() * 10);
+    const currentEmail = loginEmail.trim().toLowerCase();
+    setIsLoading(true);
+
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: currentEmail,
+        password: loginPassword,
+      });
+      if (!error && data.user) {
+        const savedLegacyUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
+        const remainingLegacyUsers = savedLegacyUsers.filter((user) => String(user.email || '').toLowerCase() !== currentEmail);
+        if (remainingLegacyUsers.length !== savedLegacyUsers.length) {
+          localStorage.setItem('mockUsers', JSON.stringify(remainingLegacyUsers));
+        }
+        await finishAuthLogin(data.user);
+        return;
       }
 
-      const newUser = {
-        name: signupName,
-        email: signupEmail,
-        phone: signupPhone,
-        password: signupPassword,
-        handle: `@${baseHandle}`
-      };
+      if (isAuthRateLimitError(error)) {
+        showToast('Too many sign-in attempts. Wait before trying again; email rate limits are enforced by the Auth provider.');
+        return;
+      }
 
-      mockUsers.push(newUser);
-      localStorage.setItem('mockUsers', JSON.stringify(mockUsers));
-      
-      showToast('Account created successfully!', 'success');
-      
-      setTimeout(() => {
-        setOtp('');
-        setGeneratedOtp('');
-        setSignupView('form');
-        enterApp(newUser);
-      }, 500);
-    } else {
-      showToast('Invalid OTP. Please try again.');
-    }
-  };
+      const credentialsRejected = error?.status === 400 && /invalid login credentials/i.test(error.message || '');
+      if (!credentialsRejected) {
+        showToast(error?.message || 'Could not sign in. Check your connection and try again.');
+        return;
+      }
 
-  const handleLoginSubmit = (e) => {
-    e.preventDefault();
-    const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    const currentEmail = loginEmail.trim().toLowerCase();
-    
-    const emailExists = mockUsers.find(u => u.email.toLowerCase() === currentEmail);
-    if (!emailExists) {
-      showToast('This email does not exist. Please create an account.');
-      return;
-    }
-    
-    const user = mockUsers.find(u => u.email.toLowerCase() === currentEmail && u.password === loginPassword);
-    
-    if (user) {
-      showToast('Login successful!', 'success');
-      setTimeout(() => enterApp(user), 500);
-    } else {
-      showToast('Wrong password.');
-    }
-  };
-
-  const handleForgotSubmit = (e) => {
-    e.preventDefault();
-    const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    const userExists = mockUsers.find(u => u.email === forgotEmail);
-
-    if (userExists) {
-      setIsLoading(true);
-      const newOtp = Math.floor(100000 + Math.random() * 900000).toString();
-      setGeneratedOtp(newOtp);
-      
-      const templateParams = {
-        to_email: forgotEmail,
-        to_name: userExists.name,
-        otp: newOtp
-      };
-
-      // EmailJS credentials
-      const SERVICE_ID = 'service_eqn0nbl';
-      const TEMPLATE_ID = 'template_rygjexr';
-      const PUBLIC_KEY = 'aNNo0vsto6b6Xfu4t';
-
-      emailjs.send(SERVICE_ID, TEMPLATE_ID, templateParams, PUBLIC_KEY)
-        .then((response) => {
-          setIsLoading(false);
-          showToast('OTP sent to your email successfully!', 'success');
-          setView('otp');
-        })
-        .catch((error) => {
-          setIsLoading(false);
-          console.error('EmailJS Error:', error);
-          showToast('Failed to send OTP. Please check your EmailJS configuration.', 'error');
+      const legacyUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
+      const legacyUser = legacyUsers.find((user) => (
+        String(user.email || '').toLowerCase() === currentEmail && user.password === loginPassword
+      ));
+      if (legacyUser) {
+        const baseHandle = String(legacyUser.handle || `@${currentEmail.split('@')[0]}`).replace(/^@/, '');
+        const { data: migrated, error: migrationError } = await supabase.auth.signUp({
+          email: currentEmail,
+          password: loginPassword,
+          options: {
+            data: {
+              name: legacyUser.name || currentEmail.split('@')[0],
+              phone: legacyUser.phone || '',
+              handle: `@${baseHandle}`,
+              bio: legacyUser.bio || '',
+            },
+            emailRedirectTo: window.location.origin,
+          },
         });
-    } else {
-      showToast('No account found with this email');
+        if (migrationError) {
+          showToast(isAuthRateLimitError(migrationError)
+            ? 'Your legacy account migration email was rate-limited. Wait before retrying, or configure custom SMTP in Supabase Auth.'
+            : migrationError.message.includes('already registered')
+              ? 'Email or password is incorrect.'
+              : migrationError.message);
+          return;
+        }
+        if (migrated.user?.identities?.length === 0) {
+          showToast('Email or password is incorrect.');
+          return;
+        }
+        if (migrated.session) {
+          localStorage.setItem('mockUsers', JSON.stringify(legacyUsers.filter((user) => user !== legacyUser)));
+          await finishAuthLogin(migrated.user);
+        } else {
+          showToast('Your old account is now linked. Check your email to confirm, then sign in.', 'success');
+        }
+        return;
+      }
+
+      showToast('Email or password is incorrect.');
+    } catch (error) {
+      showToast(isAuthRateLimitError(error)
+        ? 'Too many sign-in attempts. Wait before trying again; email rate limits are enforced by the Auth provider.'
+        : error?.message || 'Could not sign in. Check your connection and try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
-  const handleOtpSubmit = (e) => {
+  const handleForgotSubmit = async (e) => {
     e.preventDefault();
-    if (otp === generatedOtp) {
-      showToast('OTP verified! You can now reset your password.', 'success');
-      setTimeout(() => {
-        setView('reset-password');
-        setOtp('');
-        setGeneratedOtp('');
-      }, 1500);
-    } else {
-      showToast('Invalid OTP. Please try again.');
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.resetPasswordForEmail(forgotEmail.trim().toLowerCase(), {
+        redirectTo: window.location.origin,
+      });
+      if (error) {
+        showToast(error.message);
+        return;
+      }
+      setView('login');
+      showToast('If an account exists for that email, a password reset link has been sent.', 'success');
+    } catch (error) {
+      showToast(error?.message || 'Could not send a reset link. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
-  
-  const handleResetPasswordSubmit = (e) => {
+
+  const handleResetPasswordSubmit = async (e) => {
     e.preventDefault();
     if (resetPassword !== confirmResetPassword) {
       showToast('Passwords do not match');
       return;
     }
-    
-    const mockUsers = JSON.parse(localStorage.getItem('mockUsers') || '[]');
-    const userIndex = mockUsers.findIndex(u => u.email === forgotEmail);
-    
-    if (userIndex !== -1) {
-      mockUsers[userIndex].password = resetPassword;
-      localStorage.setItem('mockUsers', JSON.stringify(mockUsers));
-      
-      showToast('Password updated successfully!', 'success');
-      setTimeout(() => enterApp(mockUsers[userIndex]), 500);
+
+    setIsLoading(true);
+    try {
+      const { error } = await supabase.auth.updateUser({ password: resetPassword });
+      if (error) {
+        showToast(error.message);
+        return;
+      }
+      await supabase.auth.signOut({ scope: 'local' });
+      setResetPassword('');
+      setConfirmResetPassword('');
+      setView('login');
+      onPasswordResetSuccess?.();
+      showToast('Password updated successfully. Please sign in again.', 'success');
+    } catch (error) {
+      showToast(error?.message || 'Could not update the password. Please try again.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -401,7 +333,6 @@ function Login({ onLogin }) {
         
         {/* SIGN UP FORM */}
         <div className="form-container sign-up-container">
-          {signupView === 'form' && (
             <form onSubmit={handleSignupSubmit} className="split-form">
               <input type="text" name="fakeusernameremembered" style={{ opacity: 0, position: 'absolute', top: '-9999px' }} autoComplete="username" />
               <input type="password" name="fakepasswordremembered" style={{ opacity: 0, position: 'absolute', top: '-9999px' }} autoComplete="current-password" />
@@ -422,7 +353,7 @@ function Login({ onLogin }) {
                   {showSignupPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                 </button>
               </div>
-              <button type="submit" className="save-profile-btn liquid-btn mt-2">{isLoading ? 'Sending OTP...' : 'Sign Up'}</button>
+              <button type="submit" className="save-profile-btn liquid-btn mt-2" disabled={isLoading}>{isLoading ? 'Creating account...' : 'Sign Up'}</button>
               
               <div style={{ display: 'flex', alignItems: 'center', width: '100%', margin: '16px 0', opacity: 0.6 }}>
                 <div style={{ flex: 1, height: '1px', background: 'var(--text-secondary)' }}></div>
@@ -431,22 +362,11 @@ function Login({ onLogin }) {
               </div>
               
               <div className="social-container" style={{ width: '100%' }}>
-                <button type="button" className="social-btn liquid-hover" onClick={() => triggerGoogleAuth('signup')}>
+                <button type="button" className="social-btn liquid-hover" onClick={triggerGoogleAuth}>
                   <GoogleIcon /> <span style={{marginLeft: '8px'}}>Continue with Google</span>
                 </button>
               </div>
             </form>
-          )}
-
-          {signupView === 'otp' && (
-            <form onSubmit={handleSignupOtpSubmit} className="split-form" autoComplete="off">
-              <BackButton onClick={goBackFromSignupOtp} label="Back to sign up" />
-              <h1>Verify Email</h1>
-              <span className="form-subtitle">Enter the 6-digit OTP sent to {signupEmail}</span>
-              <input type="text" placeholder="Enter OTP" value={otp} onChange={e => setOtp(e.target.value)} required maxLength={6} autoComplete="off" />
-              <button type="submit" className="save-profile-btn liquid-btn mt-2">Verify & Create Account</button>
-            </form>
-          )}
         </div>
 
         {/* SIGN IN FORM */}
@@ -480,9 +400,12 @@ function Login({ onLogin }) {
                 <div style={{ flex: 1, height: '1px', background: 'var(--text-secondary)' }}></div>
               </div>
               
-              <div className="social-container" style={{ width: '100%' }}>
-                <button type="button" className="social-btn liquid-hover" onClick={() => triggerGoogleAuth('login')}>
+              <div className="social-container demo-social-container" style={{ width: '100%' }}>
+                <button type="button" className="social-btn liquid-hover" onClick={triggerGoogleAuth}>
                   <GoogleIcon /> <span style={{marginLeft: '8px'}}>Continue with Google</span>
+                </button>
+                <button type="button" className="social-btn demo-login-btn liquid-hover" onClick={onDemoLogin}>
+                  Continue as Demo
                 </button>
               </div>
             </form>
@@ -492,19 +415,9 @@ function Login({ onLogin }) {
             <form onSubmit={handleForgotSubmit} className="split-form">
               <BackButton onClick={goToLoginView} label="Back to sign in" />
               <h1>Reset Password</h1>
-              <span className="form-subtitle">Enter your email to receive an OTP</span>
+              <span className="form-subtitle">Enter your email to receive a password reset link</span>
               <input type="email" placeholder="Email" value={forgotEmail} onChange={e => setForgotEmail(e.target.value)} required autoComplete="email" />
-              <button type="submit" className="save-profile-btn liquid-btn mt-2">{isLoading ? 'Sending...' : 'Send OTP'}</button>
-            </form>
-          )}
-
-          {view === 'otp' && (
-            <form onSubmit={handleOtpSubmit} className="split-form" autoComplete="off">
-              <BackButton onClick={goBackFromOtp} label="Back to reset password" />
-              <h1>Enter OTP</h1>
-              <span className="form-subtitle">Check your email for the 6-digit code</span>
-              <input type="text" placeholder="Enter OTP" value={otp} onChange={e => setOtp(e.target.value)} required maxLength={6} autoComplete="off" />
-              <button type="submit" className="save-profile-btn liquid-btn mt-2">Verify OTP</button>
+              <button type="submit" className="save-profile-btn liquid-btn mt-2" disabled={isLoading}>{isLoading ? 'Sending...' : 'Send reset link'}</button>
             </form>
           )}
           

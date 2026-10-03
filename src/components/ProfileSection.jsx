@@ -1,10 +1,12 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
-  Share2, Settings, QrCode, Copy, Check, Grid, Heart, User, AtSign, Clock, AlertCircle, X, MoreVertical, LogOut, Star, Eye, Bookmark, Send, Upload, ImagePlus, Download, Trash2, Flag, Link2, EyeOff
+  Share2, Settings, QrCode, Copy, Check, Grid, Heart, User, AtSign, Clock, AlertCircle, X, MoreVertical, LogOut, Star, Eye, Bookmark, Send, Upload, ImagePlus, Download, Trash2, Flag, Link2, EyeOff, Lock
 } from 'lucide-react';
 import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
-import { deletePost } from '../lib/posts';
+import { deletePost, getUserAccountPrivacy } from '../lib/posts';
 import { getLikedPosts, REACTIONS_UPDATED_EVENT } from '../lib/reactions';
+import { recordDesignDownload } from '../lib/downloads';
 import QRCode from 'qrcode';
 
 const SHARE_TARGETS = [
@@ -36,6 +38,14 @@ const SHARE_TARGETS = [
     icon: <Send size={18} />,
     href: (url, text) => `mailto:?subject=${encodeURIComponent(text)}&body=${encodeURIComponent(url)}`,
   },
+];
+
+const POST_SHARE_TARGETS = [
+  { id: 'whatsapp', label: 'WhatsApp', icon: <Send size={19} /> },
+  { id: 'facebook', label: 'Facebook', icon: <Share2 size={19} /> },
+  { id: 'tiktok', label: 'TikTok', icon: <AtSign size={19} /> },
+  { id: 'copy', label: 'Copy link', icon: <Copy size={19} /> },
+  { id: 'more', label: 'More apps', icon: <MoreVertical size={19} /> },
 ];
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
@@ -82,6 +92,7 @@ function normalizeRemotePost(post) {
     comments: Number(post.comments || 0),
     shares: Number(post.shares || 0),
     date: post.date || post.created_at,
+    isPrivate: Boolean(post.isPrivate ?? post.is_private ?? post.private),
   };
 }
 
@@ -161,6 +172,8 @@ function formatStatCount(value) {
 
 function ProfileSection({
   activeSection,
+  isDemoMode = false,
+  userId,
   savedProfile,
   handleProfileSave,
   userName,
@@ -192,6 +205,7 @@ function ProfileSection({
   const [selectedStyleFile, setSelectedStyleFile] = useState(null);
   const [selectedPost, setSelectedPost] = useState(null);
   const [showPostMenu, setShowPostMenu] = useState(false);
+  const [showPostShareDrawer, setShowPostShareDrawer] = useState(false);
   const [isDeletingPost, setIsDeletingPost] = useState(false);
   const [showLogoutModal, setShowLogoutModal] = useState(false);
   const [likedPostIds, setLikedPostIds] = useState(new Set());
@@ -208,8 +222,47 @@ function ProfileSection({
   const [closingModal, setClosingModal] = useState(null);
 
   const profileHandle = (userHandle || savedProfile?.handle || '@fashionista_ai').replace('@', '');
-  const profileUrl = `https://aifashion.com/${profileHandle}`;
+  const profileOwnerForShare = userEmail || savedProfile?.email || '';
+  const ownerAccountIsPrivate = getUserAccountPrivacy(profileOwnerForShare) === 'private';
+  const isPostPrivateGlobal = (post) => {
+    if (!post || typeof post !== 'object') return false;
+    if (Boolean(post.isPrivate ?? post.is_private ?? post.private)) return true;
+    if (ownerAccountIsPrivate) {
+      const postAuthor = String(post.authorEmail || post.author_email || '').trim().toLowerCase();
+      const ownerKey = String(profileOwnerForShare || '').trim().toLowerCase();
+      if (postAuthor && ownerKey && postAuthor === ownerKey) return true;
+    }
+    return false;
+  };
+  const profilePosts = (profileStats.postImages || [])
+    .filter((post) => typeof post === 'object' && !isPostPrivateGlobal(post) && /^https?:\/\//i.test(post.url || post.image_url || ''))
+    .slice(0, 2)
+    .map((post) => ({
+      title: String(post.title || 'Style post').slice(0, 60),
+      url: post.url || post.image_url,
+    }));
+  const profileUrl = (() => {
+    const url = new URL('/', window.location.origin);
+    url.searchParams.set('sharedProfile', JSON.stringify({
+      name: savedProfile?.name || userName || 'Fashion Creator',
+      handle: profileHandle,
+      bio: (userBio || savedProfile?.bio || '').slice(0, 320),
+      photo: /^https?:\/\//i.test(userPhoto || '') ? userPhoto : null,
+      posts: profilePosts,
+    }));
+    return url.toString();
+  })();
   const shareText = `Check out ${savedProfile?.name || userName || 'this profile'} on AI Fashion`;
+  const followedUsers = (() => {
+    try {
+      const stored = JSON.parse(window.localStorage.getItem('aifashionFollowing') || '{}');
+      const userKey = userEmail || savedProfile?.email || 'default';
+      const entries = Array.isArray(stored) ? stored : (stored[userKey] || []);
+      return Array.isArray(entries) ? entries.filter((user) => user && typeof user === 'object' && (user.name || user.handle)) : [];
+    } catch (error) {
+      return [];
+    }
+  })();
 
   const [nameEditInfo, setNameEditInfo] = useState(() => readEditInfo('aifashion_nameEditInfo'));
   const [handleEditInfo, setHandleEditInfo] = useState(() => readEditInfo('aifashion_handleEditInfo'));
@@ -296,26 +349,39 @@ function ProfileSection({
   }, [showDropdown]);
 
   // While a profile modal is open: lock the page behind it and allow Escape to close.
-  const isAnyModalOpen = isEditing || showShareModal || showPhotoViewer;
+  const isAnyModalOpen = isEditing || showShareModal || showPhotoViewer || showLogoutModal || Boolean(selectedPost);
   useEffect(() => {
     if (!isAnyModalOpen) return;
 
     const previousOverflow = document.body.style.overflow;
+    const previousHtmlOverflow = document.documentElement.style.overflow;
     document.body.style.overflow = 'hidden';
+    document.documentElement.style.overflow = 'hidden';
+    document.body.classList.add('profile-modal-open');
+    document.documentElement.classList.add('profile-modal-open');
 
     const onKeyDown = (e) => {
       if (e.key !== 'Escape') return;
       if (showPhotoViewer) closePhotoViewer();
       else if (showShareModal) closeShareModal();
       else if (isEditing) closeEditModal();
+      else if (showLogoutModal) setShowLogoutModal(false);
+      else if (showPostShareDrawer) setShowPostShareDrawer(false);
+      else if (selectedPost) {
+        setShowPostMenu(false);
+        setSelectedPost(null);
+      }
     };
     window.addEventListener('keydown', onKeyDown);
 
     return () => {
       document.body.style.overflow = previousOverflow;
+      document.documentElement.style.overflow = previousHtmlOverflow;
+      document.body.classList.remove('profile-modal-open');
+      document.documentElement.classList.remove('profile-modal-open');
       window.removeEventListener('keydown', onKeyDown);
     };
-  }, [isAnyModalOpen, isEditing, showShareModal, showPhotoViewer]);
+  }, [isAnyModalOpen, isEditing, showShareModal, showPhotoViewer, showLogoutModal, selectedPost, showPostShareDrawer]);
 
   const nameCoolEnd = nameEditInfo.lastEditAt ? nameEditInfo.lastEditAt + SEVEN_DAYS_MS : null;
   const nameCd = nameCoolEnd ? getRemainingTime(nameCoolEnd) : null;
@@ -379,6 +445,11 @@ function ProfileSection({
 
   const saveStylePost = () => {
     if (!stylePreview) return;
+    let privacy = 'public';
+    try {
+      privacy = window.localStorage.getItem('aifashionProfilePrivacy') || 'public';
+    } catch (e) {}
+    const isPrivate = privacy === 'private';
     const post = {
       id: `profile-style-${Date.now()}`,
       url: stylePreview,
@@ -393,6 +464,7 @@ function ProfileSection({
       comments: 0,
       shares: 0,
       date: new Date().toISOString(),
+      isPrivate,
     };
     const profileKey = userEmail || savedProfile?.email || 'default';
     const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
@@ -403,7 +475,23 @@ function ProfileSection({
     window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
     setProfileStats(getProfileStats(profileKey, posts));
     closeStyleUpload();
-    showToast('Style added to your profile.', 'success');
+    showToast(
+      isPrivate ? 'Private style added — only you can see it.' : 'Style added to your profile.',
+      'success',
+    );
+  };
+
+  const openProfilePost = (post) => {
+    const postId = getPostId(post);
+    const reaction = getReactionStore()[postId] || {};
+    setShowPostMenu(false);
+    setShowPostShareDrawer(false);
+    setSelectedPost({
+      ...(typeof post === 'string' ? { id: postId, url: post, title: 'Custom Design' } : post),
+      likes: Math.max(Number(post?.likes || 0), Number(reaction.likeCount || 0)),
+      saves: Math.max(Number(post?.saves || 0), Number(reaction.saveCount || 0)),
+      shares: Math.max(Number(post?.shares || 0), Number(reaction.shareCount || 0)),
+    });
   };
 
   const handlePostAction = (action) => {
@@ -417,11 +505,13 @@ function ProfileSection({
     let updatedPost = selectedPost;
 
     if (action === 'like') {
-      const isLiked = likedPostIds.has(postId);
+      const isLiked = Boolean(reaction.likes[userKey]);
       const nextIds = new Set(likedPostIds);
       isLiked ? nextIds.delete(postId) : nextIds.add(postId);
       setLikedPostIds(nextIds);
-      updatedPost = { ...selectedPost, likes: Math.max(0, Number(selectedPost.likes || 0) + (isLiked ? -1 : 1)) };
+      const likeCount = Math.max(0, Number(selectedPost.likes || 0) + (isLiked ? -1 : 1));
+      reaction.likeCount = likeCount;
+      updatedPost = { ...selectedPost, likes: likeCount };
       if (isLiked) delete reaction.likes[userKey];
       else reaction.likes[userKey] = true;
       setLikePulsePostId(postId);
@@ -429,19 +519,15 @@ function ProfileSection({
     }
 
     if (action === 'save') {
-      const isSaved = savedPostIds.has(postId);
+      const isSaved = Boolean(reaction.saves[userKey]);
       const nextIds = new Set(savedPostIds);
       isSaved ? nextIds.delete(postId) : nextIds.add(postId);
       setSavedPostIds(nextIds);
-      updatedPost = { ...selectedPost, saves: Math.max(0, Number(selectedPost.saves || 0) + (isSaved ? -1 : 1)) };
+      const saveCount = Math.max(0, Number(selectedPost.saves || 0) + (isSaved ? -1 : 1));
+      reaction.saveCount = saveCount;
+      updatedPost = { ...selectedPost, saves: saveCount };
       if (isSaved) delete reaction.saves[userKey];
       else reaction.saves[userKey] = true;
-    }
-
-    if (action === 'share') {
-      updatedPost = { ...selectedPost, shares: Number(selectedPost.shares || 0) + 1 };
-      navigator.clipboard?.writeText(window.location.href);
-      showToast('Style link copied.', 'success');
     }
 
     reactionStore[postId] = reaction;
@@ -461,14 +547,105 @@ function ProfileSection({
     }
   };
 
+  const getPostShareUrl = () => {
+    const post = typeof selectedPost === 'string'
+      ? { url: selectedPost, title: 'Custom Design' }
+      : selectedPost;
+    const isPrivate = Boolean(post && typeof post === 'object' && (post.isPrivate ?? post.is_private ?? post.private));
+    const shareUrl = new URL('/', window.location.origin);
+    shareUrl.searchParams.set('sharedPost', JSON.stringify({
+      id: post.id || '',
+      title: String(post.title || 'Fashion style').slice(0, 80),
+      description: String(post.description || '').slice(0, 320),
+      url: post.url || post.image_url || '',
+      authorName: String(post.authorName || userName || 'Fashion Creator').slice(0, 80),
+      authorHandle: String(post.authorHandle || userHandle || '@fashion_creator').slice(0, 50),
+      isPrivate,
+    }));
+    return shareUrl.toString();
+  };
+
+  const handlePostShare = async (target) => {
+    if (!selectedPost) return;
+    const postIsPrivate = typeof selectedPost !== 'string' && Boolean(selectedPost.isPrivate ?? selectedPost.is_private ?? selectedPost.private);
+    if (postIsPrivate) {
+      showToast('This is a private post — only you can view it.', 'error');
+      setShowPostShareDrawer(false);
+      return;
+    }
+    const shareUrl = getPostShareUrl();
+    const shareTitle = typeof selectedPost === 'string' ? 'Fashion style' : (selectedPost.title || 'Fashion style');
+    const shareText = `Check out ${shareTitle}`;
+    const closeDrawer = () => setShowPostShareDrawer(false);
+    let shareCompleted = false;
+
+    if (target === 'copy' || target === 'tiktok') {
+      try {
+        await navigator.clipboard?.writeText(shareUrl);
+      } catch (error) {
+        showToast('Could not copy the link. Please try again.', 'error');
+        return;
+      }
+      closeDrawer();
+      if (target === 'tiktok') window.open('https://www.tiktok.com/', '_blank', 'noopener,noreferrer');
+      showToast(target === 'tiktok' ? 'Post link copied. Paste it into TikTok.' : 'Post link copied.', 'success');
+      shareCompleted = true;
+    } else if (target === 'whatsapp') {
+      window.open(`https://wa.me/?text=${encodeURIComponent(`${shareText} ${shareUrl}`)}`, '_blank', 'noopener,noreferrer');
+      closeDrawer();
+      shareCompleted = true;
+    } else if (target === 'facebook') {
+      window.open(`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`, '_blank', 'noopener,noreferrer');
+      closeDrawer();
+      shareCompleted = true;
+    } else if (target === 'more' && navigator.share) {
+      try {
+        await navigator.share({ title: shareTitle, text: shareText, url: shareUrl });
+        closeDrawer();
+        shareCompleted = true;
+      } catch (error) {
+        if (error?.name !== 'AbortError') showToast('Could not open the share menu.', 'error');
+      }
+    } else if (target === 'more') {
+      await handlePostShare('copy');
+      return;
+    }
+
+    if (!shareCompleted) return;
+    const postId = getPostId(selectedPost);
+    const profileKey = userEmail || savedProfile?.email || 'default';
+    const reactions = getReactionStore();
+    const reaction = reactions[postId] || { likes: {}, saves: {} };
+    reaction.shareCount = Number(reaction.shareCount ?? selectedPost.shares ?? 0) + 1;
+    reactions[postId] = reaction;
+    window.localStorage.setItem('aifashionPostReactions', JSON.stringify(reactions));
+    setSelectedPost((post) => post ? { ...post, shares: reaction.shareCount } : post);
+
+    const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
+    const profile = allProfiles[profileKey];
+    if (profile?.postImages) {
+      profile.postImages = profile.postImages.map((post) => (
+        getPostId(post) === postId ? { ...post, shares: reaction.shareCount } : post
+      ));
+      window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
+      setProfileStats(getProfileStats(profileKey, posts));
+    }
+  };
+
   const handlePostMenuAction = (action) => {
     if (!selectedPost || typeof selectedPost === 'string') return;
     const postId = selectedPost.id || selectedPost.url || selectedPost.title;
     const profileKey = userEmail || savedProfile?.email || 'default';
 
     if (action === 'share') {
-      handlePostAction('share');
+      const pvt = typeof selectedPost !== 'string' && Boolean(selectedPost.isPrivate ?? selectedPost.is_private ?? selectedPost.private);
+      if (pvt) {
+        showToast('This is a private post — only you can view it.', 'error');
+        setShowPostMenu(false);
+        return;
+      }
       setShowPostMenu(false);
+      setShowPostShareDrawer(true);
       return;
     }
 
@@ -478,6 +655,11 @@ function ProfileSection({
       link.download = selectedPost.title || 'ai-fashion-style';
       link.target = '_blank';
       link.click();
+      void recordDesignDownload({
+        userId,
+        designId: postId,
+        designTitle: selectedPost.title,
+      });
       showToast('Download started.', 'success');
       setShowPostMenu(false);
       return;
@@ -552,6 +734,7 @@ function ProfileSection({
   };
 
   const getInitials = () => {
+    if (isDemoMode) return '';
     const name = savedProfile?.name || userName;
     if (name) {
       return name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2);
@@ -559,7 +742,7 @@ function ProfileSection({
     return 'AF';
   };
 
-  const onLocalSave = (e) => {
+  const onLocalSave = async (e) => {
     e.preventDefault();
 
     if (!draftName.trim()) {
@@ -616,7 +799,7 @@ function ProfileSection({
     setUserHandle(nextHandle);
     setUserBio(nextBio);
 
-    const result = handleProfileSave({
+    const result = await handleProfileSave({
       name: nextName,
       handle: nextHandle,
       bio: nextBio,
@@ -664,6 +847,32 @@ function ProfileSection({
 
   const displayBio = (userBio || savedProfile?.bio || '').trim();
   const postImages = profileStats.postImages || [];
+  const profileOwnerEmail = userEmail || savedProfile?.email || '';
+
+  const [ownAccountPrivacy, setOwnAccountPrivacy] = useState(() => getUserAccountPrivacy(profileOwnerEmail));
+
+  useEffect(() => {
+    const refresh = () => setOwnAccountPrivacy(getUserAccountPrivacy(profileOwnerEmail));
+    refresh();
+    window.addEventListener('aifashion-privacy-updated', refresh);
+    window.addEventListener('storage', refresh);
+    return () => {
+      window.removeEventListener('aifashion-privacy-updated', refresh);
+      window.removeEventListener('storage', refresh);
+    };
+  }, [profileOwnerEmail]);
+
+  const accountIsPrivate = ownAccountPrivacy === 'private';
+
+  const isPostPrivate = (post) => {
+    if (!post || typeof post === 'string') return false;
+    if (accountIsPrivate) {
+      const authorEmail = String(post.authorEmail || post.author_email || '').trim().toLowerCase();
+      const ownerKey = String(profileOwnerEmail || '').trim().toLowerCase();
+      if (authorEmail && ownerKey && authorEmail === ownerKey) return true;
+    }
+    return Boolean(post.isPrivate ?? post.is_private ?? post.private);
+  };
 
   // A like can land on someone else's post (from Home or Search), which never
   // appears in postImages — so merge in the snapshots saved at like time.
@@ -674,12 +883,28 @@ function ProfileSection({
     ...getLikedPosts(userEmail || savedProfile?.email).filter(post => !ownLikedIds.has(getPostId(post))),
   ];
   const savedPosts = postImages.filter(post => savedPostIds.has(getPostId(post)));
+  const privatePosts = postImages.filter(post => isPostPrivate(post));
+  const myStylePosts = postImages.filter(post => !isPostPrivate(post));
 
   const visiblePosts = activeTab === 'saved'
     ? savedPosts
     : activeTab === 'liked'
       ? likedPosts
-      : postImages;
+      : activeTab === 'private'
+        ? privatePosts
+        : myStylePosts;
+
+  const isOwnPost = (() => {
+    if (!selectedPost || typeof selectedPost === 'string') return true;
+    const currentEmail = (userEmail || savedProfile?.email || '').toString().trim().toLowerCase();
+    const currentHandle = (userHandle || savedProfile?.handle || '').replace('@', '').trim().toLowerCase();
+    const postEmail = (selectedPost.authorEmail || selectedPost.author_email || '').toString().trim().toLowerCase();
+    const postHandle = (selectedPost.authorHandle || selectedPost.author_handle || '').replace('@', '').trim().toLowerCase();
+    if (currentEmail && postEmail && currentEmail === postEmail) return true;
+    if (currentHandle && postHandle && currentHandle === postHandle) return true;
+    if (!postEmail && !postHandle) return true;
+    return false;
+  })();
 
   return (
     <section id="profile" className={`section profile-section ${activeSection === 'profile' ? 'active' : 'hidden'}`}>
@@ -709,10 +934,6 @@ function ProfileSection({
                 <button type="button" role="menuitem" className="dropdown-item" onClick={() => { setShowShareModal(true); setShowDropdown(false); }}>
                   <span className="dropdown-item-icon"><Share2 size={16} /></span>
                   <span className="dropdown-item-label">Share Profile</span>
-                </button>
-                <button type="button" role="menuitem" className="dropdown-item" onClick={() => { openEditModal(); setShowDropdown(false); }}>
-                  <span className="dropdown-item-icon"><Settings size={16} /></span>
-                  <span className="dropdown-item-label">Settings</span>
                 </button>
                 <div className="dropdown-divider" role="separator" />
                 <button type="button" role="menuitem" className="dropdown-item is-danger" onClick={() => { setShowLogoutModal(true); setShowDropdown(false); }}>
@@ -747,7 +968,9 @@ function ProfileSection({
                     <img src={userPhoto} alt="Profile" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   ) : (
                     <div style={{ width: '100%', height: '100%', background: 'var(--border)', display: 'flex', alignItems: 'center', justifyItems: 'center', justifyContent: 'center' }}>
-                      <span style={{ fontSize: '30px', fontWeight: '600', color: 'var(--text-secondary)' }}>{getInitials()}</span>
+                      {isDemoMode ? <User size={30} color="var(--text-secondary)" /> : (
+                        <span style={{ fontSize: '30px', fontWeight: '600', color: 'var(--text-secondary)' }}>{getInitials()}</span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -757,15 +980,23 @@ function ProfileSection({
             
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '2px' }}>
-                <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: 'var(--text)' }}>{savedProfile?.name || userName || 'Fashion Creator'}</h2>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="none" xmlns="http://www.w3.org/2000/svg">
-                  <path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z" fill="#5E5CE6"/>
-                  <path d="M8 12.5L11 15.5L16 9.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
+                {isDemoMode ? (
+                  <span className="profile-demo-label">Guest preview</span>
+                ) : (
+                  <>
+                    <h2 style={{ fontSize: '18px', fontWeight: 'bold', margin: 0, color: 'var(--text)' }}>{savedProfile?.name || userName || 'Fashion Creator'}</h2>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M12 22C17.5 22 22 17.5 22 12C22 6.5 17.5 2 12 2C6.5 2 2 6.5 2 12C2 17.5 6.5 22 12 22Z" fill="#5E5CE6"/>
+                      <path d="M8 12.5L11 15.5L16 9.5" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    </svg>
+                  </>
+                )}
               </div>
-              <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
-                {userHandle || savedProfile?.handle || '@fashionista_ai'}
-              </div>
+              {!isDemoMode && (
+                <div style={{ color: 'var(--text-secondary)', fontSize: '13px' }}>
+                  {userHandle || savedProfile?.handle || '@fashionista_ai'}
+                </div>
+              )}
 
               {/* Bio lives with the name and username, right under them */}
               {displayBio && (
@@ -802,6 +1033,7 @@ function ProfileSection({
             <div className="social-tabs-thumb" data-tab={activeTab} aria-hidden="true" />
             {[
               { id: 'mystyle', label: 'My Style' },
+              { id: 'private', label: 'Private', icon: <Lock size={13} /> },
               { id: 'saved', label: 'Saved' },
               { id: 'liked', label: 'Liked' },
             ].map((tab) => (
@@ -813,7 +1045,10 @@ function ProfileSection({
                 className={activeTab === tab.id ? 'is-active' : ''}
                 onClick={() => setActiveTab(tab.id)}
               >
-                {tab.label}
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                  {tab.icon}
+                  {tab.label}
+                </span>
               </button>
             ))}
           </div>
@@ -823,11 +1058,12 @@ function ProfileSection({
               {visiblePosts.map((post, index) => {
                 const rawSrc = typeof post === 'string' ? post : post.url;
                 const src = repairImageUrl(rawSrc);
+                const pvt = activeTab === 'private' || isPostPrivate(post);
                 return (
                   <div 
                     key={index} 
                     className="social-post-item" 
-                    onClick={() => setSelectedPost(post)}
+                    onClick={() => openProfilePost(post)}
                     style={{ 
                       cursor: 'pointer', 
                       position: 'relative', 
@@ -851,6 +1087,12 @@ function ProfileSection({
                       <Eye size={14} />
                       <span style={{ fontWeight: '500' }}>{typeof post === 'object' ? (post.views || 0) : 0}</span>
                     </div>
+                    {pvt && (
+                      <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(10, 10, 30, 0.78)', padding: '5px 9px', borderRadius: '14px', display: 'flex', alignItems: 'center', gap: '5px', color: '#ffffff', fontSize: '11.5px', backdropFilter: 'blur(4px)', border: '1px solid rgba(255,255,255,0.1)', fontWeight: 600, letterSpacing: '0.2px' }}>
+                        <Lock size={12} />
+                        Private
+                      </div>
+                    )}
                   </div>
                 );
               })}
@@ -858,16 +1100,16 @@ function ProfileSection({
           ) : (
             <div className="social-posts-empty" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '60px 0', textAlign: 'center' }}>
               <div style={{ width: '80px', height: '80px', borderRadius: '50%', border: '2px dashed var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '20px' }}>
-                <Grid size={32} color="var(--text-secondary)" />
+                {activeTab === 'private' ? <Lock size={32} color="var(--text-secondary)" /> : <Grid size={32} color="var(--text-secondary)" />}
               </div>
-              <p style={{ fontWeight: '600', fontSize: '18px', marginBottom: '8px', color: 'var(--text)' }}>{activeTab === 'saved' ? 'No saved styles yet' : activeTab === 'liked' ? 'No liked styles yet' : 'No posts yet'}</p>
-              <span style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px', maxWidth: '250px' }}>{activeTab === 'saved' ? 'Styles you favorite will appear here.' : activeTab === 'liked' ? 'Styles you like will appear here.' : 'Your designs will appear here once you publish them.'}</span>
-              {activeTab === 'mystyle' && (
+              <p style={{ fontWeight: '600', fontSize: '18px', marginBottom: '8px', color: 'var(--text)' }}>{activeTab === 'saved' ? 'No saved styles yet' : activeTab === 'liked' ? 'No liked styles yet' : activeTab === 'private' ? 'No private posts yet' : 'No posts yet'}</p>
+              <span style={{ color: 'var(--text-secondary)', fontSize: '14px', marginBottom: '24px', maxWidth: '250px' }}>{activeTab === 'saved' ? 'Styles you favorite will appear here.' : activeTab === 'liked' ? 'Styles you like will appear here.' : activeTab === 'private' ? 'Set your profile to Private in Settings, then upload — only you will see these posts.' : 'Your designs will appear here once you publish them.'}</span>
+              {(activeTab === 'mystyle' || activeTab === 'private') && (
                 <button 
                   onClick={(e) => handleSectionClick(e, 'uploaded-images')}
                   style={{ padding: '12px 32px', borderRadius: '24px', background: 'var(--card-bg)', color: 'var(--text)', border: '1px solid var(--border)', fontWeight: '600', cursor: 'pointer', boxShadow: '0 2px 8px rgba(0,0,0,0.05)' }}
                 >
-                  Create Post
+                  {activeTab === 'private' ? 'Upload Private Post' : 'Create Post'}
                 </button>
               )}
             </div>
@@ -1110,20 +1352,23 @@ function ProfileSection({
       )}
 
       {showLogoutModal && (
-        <div className="profile-logout-overlay" onClick={() => setShowLogoutModal(false)}>
-          <div className="profile-logout-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="logout-title">
-            <div className="profile-logout-icon"><LogOut size={22} /></div>
-            <h3 id="logout-title">Are you sure you want to log out?</h3>
-            <p>You will need to sign in again to access your account.</p>
-            <div className="profile-logout-actions">
-              <button type="button" className="profile-logout-cancel" onClick={() => setShowLogoutModal(false)}>Cancel</button>
-              <button type="button" className="profile-logout-confirm" onClick={confirmLogout}>Yes, Log Out</button>
+        createPortal(
+          <div className="profile-logout-overlay" onClick={() => setShowLogoutModal(false)}>
+            <div className="profile-logout-modal" onClick={e => e.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="logout-title">
+              <div className="profile-logout-icon"><LogOut size={22} /></div>
+              <h3 id="logout-title">Are you sure you want to log out?</h3>
+              <p>You will need to sign in again to access your account.</p>
+              <div className="profile-logout-actions">
+                <button type="button" className="profile-logout-cancel" onClick={() => setShowLogoutModal(false)}>Cancel</button>
+                <button type="button" className="profile-logout-confirm" onClick={confirmLogout}>Yes, Log Out</button>
+              </div>
             </div>
-          </div>
-        </div>
+          </div>,
+          document.body,
+        )
       )}
 
-      {selectedPost && (
+      {selectedPost && createPortal(
         <div className="profile-post-viewer-overlay" onClick={() => setSelectedPost(null)}>
           <div className="profile-post-viewer" onClick={e => e.stopPropagation()}>
             <button className="profile-post-viewer-close" type="button" onClick={() => setSelectedPost(null)} aria-label="Close"><X size={24} /></button>
@@ -1135,9 +1380,9 @@ function ProfileSection({
             </div>
             <div className="profile-post-viewer-caption"><strong>{selectedPost.title || 'My latest style'} ✨</strong><span>{selectedPost.description || 'Crafted with creativity and AI.'}</span><span className="profile-post-viewer-tags">#AIFashion #MyStyle #Design</span></div>
             <div className="profile-post-viewer-actions">
-              <button type="button" className={`profile-post-viewer-action ${likePulsePostId === getPostId(selectedPost) ? 'is-liked-pulse' : ''}`} onClick={() => handlePostAction('like')} aria-label="Like style"><Heart size={31} fill={likedPostIds.has(getPostId(selectedPost)) ? '#ff5277' : 'white'} color={likedPostIds.has(getPostId(selectedPost)) ? '#ff5277' : 'white'} /><span>{selectedPost.likes ?? 0}</span></button>
-              <button type="button" className="profile-post-viewer-action" onClick={() => handlePostAction('save')} aria-label="Save style"><Bookmark size={31} fill={savedPostIds.has(getPostId(selectedPost)) ? 'white' : 'none'} /><span>{selectedPost.saves ?? 0}</span></button>
-              <button type="button" className="profile-post-viewer-action" onClick={() => handlePostAction('share')} aria-label="Share style"><Send size={31} fill="white" /><span>{selectedPost.shares ?? 0}</span></button>
+              <button type="button" className={`profile-post-viewer-action ${likePulsePostId === getPostId(selectedPost) ? 'is-liked-pulse' : ''}`} onClick={() => handlePostAction('like')} aria-label="Like style" aria-pressed={likedPostIds.has(getPostId(selectedPost))}><Heart size={31} fill={likedPostIds.has(getPostId(selectedPost)) ? '#ff5277' : 'white'} color={likedPostIds.has(getPostId(selectedPost)) ? '#ff5277' : 'white'} /><span>{selectedPost.likes ?? 0}</span></button>
+              <button type="button" className={`profile-post-viewer-action ${savedPostIds.has(getPostId(selectedPost)) ? 'is-saved' : ''}`} onClick={() => handlePostAction('save')} aria-label="Save style" aria-pressed={savedPostIds.has(getPostId(selectedPost))}><Bookmark size={31} fill={savedPostIds.has(getPostId(selectedPost)) ? '#ffd34e' : 'none'} color={savedPostIds.has(getPostId(selectedPost)) ? '#ffd34e' : 'white'} /><span>{selectedPost.saves ?? 0}</span></button>
+              <button type="button" className="profile-post-viewer-action" onClick={() => setShowPostShareDrawer(true)} aria-label="Share style"><Send size={31} /><span>{selectedPost.shares ?? 0}</span></button>
               <div className="profile-post-viewer-action"><Eye size={31} fill="white" /><span>{selectedPost.views ?? 0}</span></div>
               <button type="button" className="profile-post-viewer-more" onClick={() => setShowPostMenu(true)} aria-label="More post options"><MoreVertical size={31} /></button>
             </div>
@@ -1152,13 +1397,50 @@ function ProfileSection({
                     <button type="button" onClick={() => handlePostMenuAction('copy')}><span className="profile-post-menu-icon"><Link2 size={21} /></span><span>Copy link</span></button>
                     <button type="button" onClick={() => handlePostMenuAction('hide')}><span className="profile-post-menu-icon"><EyeOff size={21} /></span><span>Hide post</span></button>
                     <button type="button" className="profile-post-menu-danger" onClick={() => handlePostMenuAction('delete')}><span className="profile-post-menu-icon"><Trash2 size={21} /></span><span>Delete</span></button>
-                    <button type="button" className="profile-post-menu-danger" onClick={() => handlePostMenuAction('report')}><span className="profile-post-menu-icon"><Flag size={21} /></span><span>Report</span></button>
+                    {!isOwnPost && (
+                      <button type="button" className="profile-post-menu-danger" onClick={() => handlePostMenuAction('report')}><span className="profile-post-menu-icon"><Flag size={21} /></span><span>Report</span></button>
+                    )}
                   </div>
                 </div>
               </div>
             )}
+            {showPostShareDrawer && (
+              <div className="profile-post-share-backdrop" onClick={() => setShowPostShareDrawer(false)}>
+                <section className="profile-post-share-drawer" onClick={(event) => event.stopPropagation()} role="dialog" aria-modal="true" aria-labelledby="post-share-title">
+                  <div className="profile-post-menu-handle" />
+                  <div className="profile-post-menu-title">
+                    <strong id="post-share-title">Share post</strong>
+                    <button type="button" onClick={() => setShowPostShareDrawer(false)} aria-label="Close share options"><X size={20} /></button>
+                  </div>
+                  <div className="profile-post-share-options">
+                    {POST_SHARE_TARGETS.map((target) => (
+                      <button type="button" key={target.id} onClick={() => handlePostShare(target.id)}>
+                        <span className={`profile-post-share-icon is-${target.id}`}>{target.icon}</span>
+                        <span>{target.label}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <div className="profile-post-share-following">
+                    <h4>Send to people you follow</h4>
+                    {followedUsers.length ? (
+                      <div className="profile-post-share-contacts">
+                        {followedUsers.map((user, index) => (
+                          <button type="button" key={user.id || user.email || user.handle || index} onClick={() => handlePostShare('copy')}>
+                            <span className="profile-post-share-contact-avatar">{String(user.name || user.handle).slice(0, 1).toUpperCase()}</span>
+                            <span>{user.name || user.handle}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ) : (
+                      <p>No followed users are available to share with yet.</p>
+                    )}
+                  </div>
+                </section>
+              </div>
+            )}
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
     </section>
   );

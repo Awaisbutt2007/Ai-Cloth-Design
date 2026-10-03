@@ -11,10 +11,22 @@ import { addToCart } from '../lib/cart';
 import { useLikedPostIds, toggleLike } from '../lib/reactions';
 import { repairImageUrl } from '../constants';
 import PostImage from './PostImage';
+import { shouldHidePostFromViewer } from '../lib/posts';
 
 const PAGE_SIZE = 8;
 const MAX_PRICE = 500;
 const MIN_PRICE = 10;
+
+function getCurrentViewerEmail() {
+  try {
+    const raw = window.localStorage.getItem('aifashionUserProfile');
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && p.email) return p.email;
+    }
+  } catch {}
+  return '';
+}
 
 /** Turn a stored/remote post into the shape the grid renders. */
 function normalizePost(post) {
@@ -99,7 +111,8 @@ function FilterGroup({ title, children, defaultOpen = true }) {
   );
 }
 
-function SearchExploreSection({ activeSection, handleProductClick, handleSectionClick, onNotify, posts }) {
+function SearchExploreSection({ activeSection, handleProductClick, handleSectionClick, onNotify, posts, postsRefreshTick }) {
+  void postsRefreshTick;
   const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState('');
   const [selectedTags, setSelectedTags] = useState([]);
@@ -110,11 +123,16 @@ function SearchExploreSection({ activeSection, handleProductClick, handleSection
   const [page, setPage] = useState(1);
   const [showSortMenu, setShowSortMenu] = useState(false);
   const likedPostIds = useLikedPostIds();
+  const viewerEmail = getCurrentViewerEmail();
+
+  const isPrivate = (raw) => Boolean(raw && typeof raw === 'object' && (raw.isPrivate ?? raw.is_private ?? raw.private));
 
   // Real uploaded posts come first, demo catalogue fills the rest of the grid.
   const userProducts = useMemo(
-    () => (Array.isArray(posts) ? posts : []).map(normalizePost).filter((p) => p.id && p.image),
-    [posts],
+    () => (Array.isArray(posts)
+      ? posts.filter((p) => !isPrivate(p) && !shouldHidePostFromViewer(p, viewerEmail)).map(normalizePost).filter((p) => p.id && p.image)
+      : []),
+    [posts, viewerEmail, postsRefreshTick],
   );
 
   const allProducts = useMemo(() => {

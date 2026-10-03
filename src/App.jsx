@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { designs } from './constants';
-import { Check, AlertCircle, AlertTriangle, X, Menu } from 'lucide-react';
+import { isAuthProviderEnabled, supabase } from './lib/supabaseClient';
+import { Check, AlertCircle, AlertTriangle, X, Menu, LogIn, Info } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import OfflineBanner from './components/OfflineBanner';
 import SearchExploreSection from './components/SearchExploreSection';
@@ -27,6 +28,8 @@ import DownloadsAnalyticsSection from './components/DownloadsAnalyticsSection';
 import SharesAnalyticsSection from './components/SharesAnalyticsSection';
 import AIUsageAnalyticsSection from './components/AIUsageAnalyticsSection';
 import UploadedImagesSection from './components/UploadedImagesSection';
+import SharedProfilePage from './components/SharedProfilePage';
+import SharedPostPage from './components/SharedPostPage';
 import AIGeneratedImagesSection from './components/AIGeneratedImagesSection';
 import SavedPromptsSection from './components/SavedPromptsSection';
 import BackgroundRemoverSection from './components/BackgroundRemoverSection';
@@ -36,12 +39,16 @@ import PatternGeneratorSection from './components/PatternGeneratorSection';
 import CustomAvatarSection from './components/CustomAvatarSection';
 import FavoritesSection from './components/FavoritesSection';
 import PublishedDesignsSection from './components/PublishedDesignsSection';
+import SuperAdminSection from './components/SuperAdminSection';
 import Login from './components/Login';
 import WelcomeOverlay from './components/WelcomeOverlay';
 import InboxSection from './components/InboxSection';
 import ProductDetailsSection from './components/ProductDetailsSection';
 import RecentlyViewedSection from './components/RecentlyViewedSection';
-import { fetchPosts, purgeLocalUserPosts, purgeUserUploadedPosts } from './lib/posts';
+import { fetchPosts, incrementPostView, purgeLocalUserPosts, getUserAccountPrivacy, shouldHidePostFromViewer, fetchAccountPrivacyMap, syncCurrentUserAccountPrivacy } from './lib/posts';
+
+const SUPER_ADMIN_EMAIL = (import.meta.env.VITE_SUPER_ADMIN_EMAIL || 'buttawais2000@gmail.com').trim().toLowerCase();
+let hasShownPostViewSetupNotice = false;
 
 function initGlobalSeedPosts() {
   const key = 'aifashionGlobalPosts';
@@ -169,9 +176,64 @@ function initGlobalSeedPosts() {
   window.localStorage.setItem('aifashionProfileStats', JSON.stringify(allProfiles));
 }
 
+function readSharedProfile() {
+  try {
+    const rawProfile = new URLSearchParams(window.location.search).get('sharedProfile');
+    if (!rawProfile) return null;
+    const profile = JSON.parse(rawProfile);
+    const handle = String(profile?.handle || '').trim().replace(/^@/, '').slice(0, 40);
+    if (!handle) return null;
+    const isPrivate = (p) => Boolean(p && typeof p === 'object' && (p.isPrivate ?? p.is_private ?? p.private));
+    const profileAuthorEmail = String(profile?.email || profile?.authorEmail || '').trim().toLowerCase();
+    const accountIsPrivate = profileAuthorEmail ? getUserAccountPrivacy(profileAuthorEmail) === 'private' : false;
+
+    return {
+      name: String(profile.name || 'Fashion Creator').slice(0, 80),
+      handle,
+      bio: String(profile.bio || '').slice(0, 320),
+      photo: /^https?:\/\//i.test(profile.photo || '') ? profile.photo : null,
+      posts: accountIsPrivate
+        ? []
+        : Array.isArray(profile.posts)
+          ? profile.posts.filter((post) => post && !isPrivate(post) && !shouldHidePostFromViewer(post, '') && /^https?:\/\//i.test(post.url || '')).slice(0, 2)
+          : [],
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
+function readSharedPost() {
+  try {
+    const rawPost = new URLSearchParams(window.location.search).get('sharedPost');
+    if (!rawPost) return null;
+    const post = JSON.parse(rawPost);
+    if (!post || !String(post.title || '').trim()) return null;
+    const isPrivate = Boolean(post.isPrivate ?? post.is_private ?? post.private);
+    if (isPrivate) return null;
+    const authorEmail = String(post.authorEmail || post.author_email || post.email || '').trim().toLowerCase();
+    if (authorEmail && (getUserAccountPrivacy(authorEmail) === 'private' || post.account_is_private)) return null;
+    return {
+      id: String(post.id || '').slice(0, 64),
+      title: String(post.title).slice(0, 80),
+      description: String(post.description || '').slice(0, 320),
+      url: /^https?:\/\//i.test(post.url || '') ? post.url : '',
+      authorName: String(post.authorName || 'Fashion Creator').slice(0, 80),
+      authorHandle: String(post.authorHandle || '@fashion_creator').slice(0, 50),
+    };
+  } catch (error) {
+    return null;
+  }
+}
+
 function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => Boolean(window.localStorage.getItem('aifashionUserProfile')));
+  const [sharedProfile, setSharedProfile] = useState(readSharedProfile);
+  const [sharedPost, setSharedPost] = useState(readSharedPost);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const [isDemoMode, setIsDemoMode] = useState(false);
   const [isAuthRestoring, setIsAuthRestoring] = useState(true);
+  const [isPasswordRecovery, setIsPasswordRecovery] = useState(false);
   const [showWelcomeOverlay, setShowWelcomeOverlay] = useState(false);
   const [welcomeExiting, setWelcomeExiting] = useState(false);
   const [selectedCategory, setSelectedCategory] = useState('Ready-to-Wear');
@@ -190,8 +252,8 @@ function App() {
   const [userName, setUserName] = useState('');
   const [userEmail, setUserEmail] = useState('');
   const [userPhone, setUserPhone] = useState('');
-  const [userPassword, setUserPassword] = useState('');
   const [userPhoto, setUserPhoto] = useState(null);
+  const [faceScanPhoto, setFaceScanPhoto] = useState('');
   const [userHandle, setUserHandle] = useState('@fashionista_ai');
   const [userBio, setUserBio] = useState('');
   const [savedProfile, setSavedProfile] = useState(null);
@@ -247,24 +309,92 @@ function App() {
   );
 
   useEffect(() => {
-    const stored = window.localStorage.getItem('aifashionUserProfile');
-    if (stored) {
-      try {
-        const profile = JSON.parse(stored);
-        setSavedProfile(profile);
-        setUserName(profile.name || '');
-        setUserEmail(profile.email || '');
-        setUserPhone(profile.phone || '');
-        setUserPassword(profile.password || '');
-        setUserPhoto(profile.photo || null);
-        setUserHandle(profile.handle || '@fashionista_ai');
-        setUserBio(profile.bio || '');
-      } catch {
-        window.localStorage.removeItem('aifashionUserProfile');
+    let mounted = true;
+    const applySession = (session) => {
+      if (!mounted) return;
+      if (!session?.user) {
+        setIsSuperAdmin(false);
+        setIsDemoMode(false);
         setIsLoggedIn(false);
+        setSavedProfile(null);
+        window.localStorage.removeItem('aifashionUserProfile');
+        setIsAuthRestoring(false);
+        return;
       }
+
+      const authUser = session.user;
+      setIsSuperAdmin(authUser.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL);
+      setIsDemoMode(false);
+      const metadata = authUser.user_metadata || {};
+      const email = authUser.email || '';
+      const profile = {
+        id: authUser.id,
+        name: metadata.name || metadata.full_name || email.split('@')[0] || 'Fashion Creator',
+        email,
+        phone: metadata.phone || authUser.phone || '',
+        photo: metadata.photo || metadata.avatar_url || null,
+        handle: metadata.handle || `@${(email.split('@')[0] || 'fashionista').replace(/[^a-z0-9_]/gi, '').slice(0, 24)}`,
+        bio: metadata.bio || '',
+      };
+      setIsLoggedIn(true);
+      setSavedProfile(profile);
+      setUserName(profile.name);
+      setUserEmail(profile.email);
+      setUserPhone(profile.phone);
+      setUserPhoto(profile.photo);
+      setUserHandle(profile.handle);
+      setUserBio(profile.bio);
+      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(profile));
+      const legacyUsers = JSON.parse(window.localStorage.getItem('mockUsers') || '[]');
+      const remainingLegacyUsers = legacyUsers.filter((user) => String(user.email || '').toLowerCase() !== email.toLowerCase());
+      if (remainingLegacyUsers.length !== legacyUsers.length) {
+        window.localStorage.setItem('mockUsers', JSON.stringify(remainingLegacyUsers));
+      }
+      setIsAuthRestoring(false);
+    };
+
+    supabase.auth.getSession()
+      .then(({ data, error }) => {
+        if (error) console.error('Auth session could not be restored:', error.message);
+        applySession(data?.session || null);
+      })
+      .catch((error) => {
+        console.error('Auth session could not be restored:', error);
+        applySession(null);
+      });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY') setIsPasswordRecovery(true);
+      if (event === 'SIGNED_OUT') setIsPasswordRecovery(false);
+      applySession(session);
+      if (event === 'SIGNED_IN') {
+        window.setTimeout(async () => {
+          const { error } = await supabase.auth.signOut({ scope: 'others' });
+          if (error) {
+            console.error('Could not revoke other device sessions:', error.message);
+            showToast('Signed in, but could not end other device sessions. This login remains active.');
+          }
+        }, 0);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSuperAdmin && activeSection === 'super-admin') {
+      setActiveSection('profile');
+      window.localStorage.setItem('aifashionActiveSection', 'profile');
     }
-    setIsAuthRestoring(false);
+  }, [isSuperAdmin, activeSection]);
+
+  useEffect(() => {
+    const closeSettings = () => setActiveSection((current) => current === 'settings' ? 'profile' : current);
+    window.addEventListener('aifashion-settings-close', closeSettings);
+    return () => window.removeEventListener('aifashion-settings-close', closeSettings);
   }, []);
 
   useEffect(() => {
@@ -301,12 +431,31 @@ function App() {
   useEffect(() => {
     const refreshPosts = () => setPostsRefreshTick((tick) => tick + 1);
     window.addEventListener('aifashion-posts-updated', refreshPosts);
+    window.addEventListener('aifashion-privacy-updated', refreshPosts);
     window.addEventListener('storage', refreshPosts);
     return () => {
       window.removeEventListener('aifashion-posts-updated', refreshPosts);
+      window.removeEventListener('aifashion-privacy-updated', refreshPosts);
       window.removeEventListener('storage', refreshPosts);
     };
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchAccountPrivacyMap().then(() => {
+      if (cancelled) return;
+      setSharedProfile(readSharedProfile());
+      setSharedPost(readSharedPost());
+    }).catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (!isLoggedIn || !userEmail) return;
+    syncCurrentUserAccountPrivacy(userEmail).catch((error) => {
+      console.warn('Account privacy could not be synced:', error?.message || error);
+    });
+  }, [isLoggedIn, userEmail]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -317,11 +466,6 @@ function App() {
           purgeLocalUserPosts();
           window.localStorage.setItem('aifashionLocalUserPostsPurged', 'true');
         }
-        if (!window.localStorage.getItem('aifashionUserPostsPurged')) {
-          await purgeUserUploadedPosts();
-          window.localStorage.setItem('aifashionUserPostsPurged', 'true');
-          window.dispatchEvent(new Event('aifashion-posts-updated'));
-        }
         const posts = await fetchPosts();
         if (!cancelled) setSharedPosts(posts);
       } catch (error) {
@@ -331,11 +475,36 @@ function App() {
     };
     loadPosts();
     window.addEventListener('aifashion-posts-updated', loadPosts);
+    window.addEventListener('aifashion-privacy-updated', loadPosts);
     return () => {
       cancelled = true;
       window.removeEventListener('aifashion-posts-updated', loadPosts);
+      window.removeEventListener('aifashion-privacy-updated', loadPosts);
     };
   }, [isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || activeSection !== 'profile') return;
+    let cancelled = false;
+    const refreshProfilePosts = async () => {
+      try {
+        const latestPosts = await fetchPosts();
+        if (!cancelled) setSharedPosts(latestPosts);
+      } catch (error) {
+        console.error('Profile post views could not be refreshed:', error);
+      }
+    };
+
+    refreshProfilePosts();
+    const interval = window.setInterval(() => {
+      if (!document.hidden) refreshProfilePosts();
+    }, 30000);
+
+    return () => {
+      cancelled = true;
+      window.clearInterval(interval);
+    };
+  }, [isLoggedIn, activeSection]);
 
   // Shrinking to a narrow viewport always collapses the sidebar back to a drawer.
   useEffect(() => {
@@ -359,6 +528,8 @@ function App() {
   function handleSidebarNavigate(event, section) {
     // On desktop the sidebar is permanent; only the mobile drawer closes on navigate.
     if (window.innerWidth <= 1024) setIsSidebarOpen(false);
+    setSidebarSearch('');
+    if (sidebarSearchRef.current) sidebarSearchRef.current.value = '';
     handleSectionClick(event, section);
   }
 
@@ -406,7 +577,7 @@ function App() {
     return () => observer.disconnect();
   }, []);
 
-  function handleProfileSave(updates = {}) {
+  async function handleProfileSave(updates = {}) {
     const name = (updates.name ?? userName).trim();
     const handle = (updates.handle ?? userHandle).trim();
     const bio = (updates.bio ?? userBio).trim();
@@ -425,7 +596,6 @@ function App() {
       name,
       email: userEmail.trim(),
       phone: userPhone.trim(),
-      password: userPassword.trim(),
       photo: userPhoto,
       handle,
       bio,
@@ -433,16 +603,14 @@ function App() {
     };
 
     try {
-      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(profile));
-
-      const mockUsers = JSON.parse(window.localStorage.getItem('mockUsers') || '[]');
-      const userIdx = mockUsers.findIndex(u => u.email === profile.email);
-      if (userIdx !== -1) {
-        mockUsers[userIdx] = { ...mockUsers[userIdx], ...profile };
-      } else {
-        mockUsers.push(profile);
+      const { error: authUpdateError } = await supabase.auth.updateUser({
+        data: { name, phone: profile.phone, photo: profile.photo, handle, bio },
+      });
+      if (authUpdateError) {
+        return { success: false, message: authUpdateError.message || 'Profile update failed. Please try again.' };
       }
-      window.localStorage.setItem('mockUsers', JSON.stringify(mockUsers));
+
+      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(profile));
 
       setUserName(name);
       setUserHandle(handle);
@@ -482,6 +650,8 @@ function App() {
   }
 
   function handleLogin(user) {
+    setIsDemoMode(false);
+    setIsSuperAdmin(user?.email?.trim().toLowerCase() === SUPER_ADMIN_EMAIL);
     setIsLoggedIn(true);
     setShowWelcomeOverlay(true);
     setWelcomeExiting(false);
@@ -493,11 +663,12 @@ function App() {
       setUserName(user.name || '');
       setUserEmail(user.email || '');
       setUserPhone(user.phone || '');
-      setUserPassword(user.password || '');
       setUserHandle(user.handle || '@fashionista_ai');
       setUserBio(user.bio || '');
-      setSavedProfile(user);
-      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(user));
+      const safeProfile = { ...user };
+      delete safeProfile.password;
+      setSavedProfile(safeProfile);
+      window.localStorage.setItem('aifashionUserProfile', JSON.stringify(safeProfile));
     }
     requestAnimationFrame(() => {
       topSearchRef.current && (topSearchRef.current.value = '');
@@ -506,19 +677,57 @@ function App() {
     });
   }
 
+  function handleDemoLogin() {
+    setIsSuperAdmin(false);
+    setIsDemoMode(true);
+    setIsLoggedIn(true);
+    setShowWelcomeOverlay(false);
+    setActiveSection('profile');
+    window.localStorage.setItem('aifashionActiveSection', 'profile');
+    setUserName('');
+    setUserEmail('');
+    setUserPhone('');
+    setUserPhoto(null);
+    setUserHandle('');
+    setUserBio('');
+    setSavedProfile(null);
+    window.localStorage.removeItem('aifashionUserProfile');
+  }
+
+  async function handleGuestGoogleLogin() {
+    try {
+      if (!await isAuthProviderEnabled('google')) {
+        showToast('Google sign-in is not enabled for this app. Configure the Google provider in Supabase Auth first.', 'error');
+        return;
+      }
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: { redirectTo: window.location.origin },
+      });
+      if (error) showToast(error.message || 'Google sign-in could not be started.', 'error');
+    } catch (error) {
+      showToast(error?.message || 'Google sign-in could not be started.', 'error');
+    }
+  }
+
   function handleLogout() {
+    setIsSuperAdmin(false);
+    setIsDemoMode(false);
     setIsLoggedIn(false);
+    setFaceScanPhoto('');
     setShowWelcomeOverlay(false);
     setWelcomeExiting(false);
     setSavedProfile(null);
     setUserName('');
     setUserEmail('');
     setUserPhone('');
-    setUserPassword('');
     setUserPhoto(null);
     setUserHandle('@fashionista_ai');
     setUserBio('');
     window.localStorage.removeItem('aifashionUserProfile');
+    supabase.auth.signOut({ scope: 'local' }).catch((error) => {
+      console.error('Could not clear the local auth session:', error);
+    });
     setActiveSection('profile');
     window.localStorage.setItem('aifashionActiveSection', 'profile');
   }
@@ -529,6 +738,7 @@ function App() {
 
     if (typeof product === 'object') {
       const updatedProduct = { ...product, views: (product.views || 0) + 1 };
+      currentProduct = updatedProduct;
       let found = false;
 
       const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
@@ -565,6 +775,30 @@ function App() {
           }
         }
       } catch (e) {}
+
+      if (product.id && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(product.id)) {
+        setSharedPosts((current) => Array.isArray(current)
+          ? current.map((post) => post.id === product.id ? updatedProduct : post)
+          : current);
+        incrementPostView(product.id)
+          .then((views) => {
+            if (views == null) {
+              if (!hasShownPostViewSetupNotice) {
+                hasShownPostViewSetupNotice = true;
+                showToast('View counting is temporarily unavailable. Please try again later.', 'info');
+              }
+              return;
+            }
+            setSharedPosts((current) => Array.isArray(current)
+              ? current.map((post) => post.id === product.id ? { ...post, views } : post)
+              : current);
+            setSelectedProduct((current) => current?.id === product.id ? { ...current, views } : current);
+            window.dispatchEvent(new Event('aifashion-posts-updated'));
+          })
+          .catch((error) => {
+            console.error('Post view could not be recorded:', error);
+          });
+      }
     }
       
     const recentlyViewedStr = window.localStorage.getItem('aifashionRecentlyViewed');
@@ -603,12 +837,24 @@ function App() {
     }, 520);
   }
 
+  if (sharedPost) {
+    return <SharedPostPage post={sharedPost} />;
+  }
+
+  if (sharedProfile) {
+    return <SharedProfilePage profile={sharedProfile} />;
+  }
+
   if (isAuthRestoring) {
     return <div className="auth-restore-screen" role="status" aria-label="Restoring your session"><div className="auth-restore-spinner" /><p>Restoring your fashion workspace...</p></div>;
   }
 
+  if (isPasswordRecovery) {
+    return <Login recoveryMode onPasswordResetSuccess={() => setIsPasswordRecovery(false)} />;
+  }
+
   if (!isLoggedIn) {
-    return <Login onLogin={handleLogin} />;
+    return <Login onLogin={handleLogin} onDemoLogin={handleDemoLogin} />;
   }
 
   return (
@@ -634,13 +880,26 @@ function App() {
       <Sidebar
         activeSection={activeSection}
         handleSectionClick={handleSidebarNavigate}
+        isSuperAdmin={isSuperAdmin}
         sidebarSearch={sidebarSearch}
         setSidebarSearch={setSidebarSearch}
         sidebarSearchRef={sidebarSearchRef}
         onCloseSidebar={() => setIsSidebarOpen(false)}
       />
 
-      <div className="content-area">
+      <div className={`content-area ${isDemoMode ? 'guest-content-area' : ''}`}>
+        {isDemoMode && (
+          <aside className="guest-banner" aria-label="Guest browsing notice">
+            <div className="guest-banner-copy">
+              <strong>You are browsing as a guest</strong>
+              <span>Sign in with Google to connect your account and set up your personal profile.</span>
+            </div>
+            <button type="button" className="guest-banner-button" onClick={handleGuestGoogleLogin}>
+              <LogIn size={17} aria-hidden="true" />
+              Continue with Google
+            </button>
+          </aside>
+        )}
         <div className="content-scroll">
           {isSectionLoading && (
             <div className="section-loader-overlay">
@@ -656,6 +915,7 @@ function App() {
             handleSectionClick={handleSectionClick}
             onNotify={(message) => showToast(message, 'success')}
             posts={sharedPosts}
+            postsRefreshTick={postsRefreshTick}
           />
 
           <AddToCartSection
@@ -667,6 +927,8 @@ function App() {
 
           <ProfileSection
             activeSection={activeSection}
+            isDemoMode={isDemoMode}
+            userId={savedProfile?.id}
             savedProfile={savedProfile}
             handleProfileSave={handleProfileSave}
             userName={userName}
@@ -684,7 +946,7 @@ function App() {
             posts={sharedPosts}
           />
 
-          <CreateSection activeSection={activeSection} posts={sharedPosts} handleProductClick={handleProductClick} />
+          <CreateSection activeSection={activeSection} posts={sharedPosts} handleProductClick={handleProductClick} savedFacePhoto={faceScanPhoto} />
 
           <WorkspaceSection activeSection={activeSection} />
 
@@ -700,6 +962,7 @@ function App() {
             handleSectionClick={handleSectionClick}
             handleProductClick={handleProductClick}
             posts={sharedPosts}
+            postsRefreshTick={postsRefreshTick}
           />
 
           <RecentlyViewedSection
@@ -780,7 +1043,14 @@ function App() {
 
           <GallerySection activeSection={activeSection} galleryItems={galleryItems} />
 
-          <SettingsSection activeSection={activeSection} />
+          <SettingsSection
+            activeSection={activeSection}
+            darkMode={darkMode}
+            setDarkMode={setDarkMode}
+            userEmail={userEmail}
+            onLogout={handleLogout}
+            onFacePhotoChange={setFaceScanPhoto}
+          />
 
           <SecuritySection activeSection={activeSection} />
 
@@ -792,10 +1062,15 @@ function App() {
           <UploadedImagesSection
             activeSection={activeSection}
             userEmail={userEmail}
-            onUploadSuccess={() => {
+            onUploadSuccess={(customMessage) => {
               setActiveSection('home');
               window.localStorage.setItem('aifashionActiveSection', 'home');
-              showToast('Your post is now visible to all users.', 'success');
+              showToast(
+                typeof customMessage === 'string' && customMessage
+                  ? customMessage
+                  : 'Your post is now visible to all users.',
+                'success',
+              );
             }}
             onUploadError={(message) => showToast(message, 'error')}
           />
@@ -814,6 +1089,7 @@ function App() {
           <CustomAvatarSection activeSection={activeSection} />
           <FavoritesSection activeSection={activeSection} />
           <PublishedDesignsSection activeSection={activeSection} />
+          {isSuperAdmin && <SuperAdminSection activeSection={activeSection} />}
           <ProductDetailsSection
             activeSection={activeSection}
             product={selectedProduct}

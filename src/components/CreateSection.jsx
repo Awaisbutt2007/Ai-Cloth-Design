@@ -2,13 +2,13 @@ import React, { useState, useEffect, useRef } from 'react';
 import PostImage from './PostImage';
 import { ShoppingBag, Palette, Sparkles, Package, Play, Camera, Image as ImageIcon, X, ChevronRight } from 'lucide-react';
 
-function CreateSection({ activeSection, posts, handleProductClick }) {
+function CreateSection({ activeSection, posts, handleProductClick, savedFacePhoto = '' }) {
   const [isScanning, setIsScanning] = useState(false);
   const [scanProgress, setScanProgress] = useState(0);
   const [showCameraModal, setShowCameraModal] = useState(false);
   const [mode, setMode] = useState('choose'); // 'choose' | 'camera' | 'preview'
   const [cameraError, setCameraError] = useState('');
-  const [capturedPhoto, setCapturedPhoto] = useState(null);
+  const [capturedPhoto, setCapturedPhoto] = useState(savedFacePhoto || null);
   const [showRecommendations, setShowRecommendations] = useState(false);
 
   const videoRef = useRef(null);
@@ -22,12 +22,22 @@ function CreateSection({ activeSection, posts, handleProductClick }) {
       setScanProgress(0);
       setShowCameraModal(false);
       setMode('choose');
-      setCapturedPhoto(null);
+      setCapturedPhoto(savedFacePhoto || null);
       setShowRecommendations(false);
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-  }, [activeSection]);
+  }, [activeSection, savedFacePhoto]);
+
+  useEffect(() => {
+    if (activeSection !== 'ai-scan' || !savedFacePhoto) return;
+    setCapturedPhoto(savedFacePhoto);
+    setShowCameraModal(false);
+    setMode('choose');
+    setScanProgress(0);
+    setShowRecommendations(false);
+    setIsScanning(true);
+  }, [activeSection, savedFacePhoto]);
 
   // Never leave the camera light on.
   useEffect(() => () => {

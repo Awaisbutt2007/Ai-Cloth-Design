@@ -3,6 +3,18 @@ import { ArrowLeft, Heart, Star } from 'lucide-react';
 import PostImage from './PostImage';
 import { useLikedPostIds, toggleLike, getPostId } from '../lib/reactions';
 import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
+import { shouldHidePostFromViewer } from '../lib/posts';
+
+function getCurrentViewerEmail() {
+  try {
+    const raw = window.localStorage.getItem('aifashionUserProfile');
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && p.email) return p.email;
+    }
+  } catch {}
+  return '';
+}
 
 function readRecentlyViewed() {
   try {
@@ -15,7 +27,8 @@ function readRecentlyViewed() {
 }
 
 export default function RecentlyViewedSection({ activeSection, handleSectionClick, handleProductClick }) {
-  const recentlyViewed = readRecentlyViewed();
+  const viewerEmail = getCurrentViewerEmail();
+  const recentlyViewed = readRecentlyViewed().filter(post => !shouldHidePostFromViewer(post, viewerEmail));
   const likedPostIds = useLikedPostIds();
 
   if (activeSection !== 'recently-viewed') return null;

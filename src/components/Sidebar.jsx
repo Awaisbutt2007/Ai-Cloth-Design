@@ -19,6 +19,7 @@ import {
   Inbox,
   Crown,
   PanelLeftClose,
+  ShieldCheck,
 } from 'lucide-react';
 import { useCart, getCartCount } from '../lib/cart';
 
@@ -29,6 +30,7 @@ function Sidebar({
   setSidebarSearch,
   sidebarSearchRef,
   onCloseSidebar,
+  isSuperAdmin = false,
 }) {
   const cartItems = useCart();
   const cartCount = getCartCount(cartItems);
@@ -70,6 +72,12 @@ function Sidebar({
       title: 'Billing',
       icon: CreditCard,
       items: ['Subscription'],
+    },
+    {
+      id: 'settings',
+      title: 'Settings',
+      icon: Settings,
+      items: ['Settings'],
     },
     {
       id: 'dashboard',
@@ -132,6 +140,16 @@ function Sidebar({
           />
         </div>
         <nav className="sidebar-nav">
+          {isSuperAdmin && (
+            <a
+              href="#admin-super-admin"
+              className={`sidebar-super-admin-link ${activeSection === 'super-admin' ? 'active' : ''}`}
+              onClick={(event) => handleSectionClick(event, 'super-admin')}
+            >
+              <ShieldCheck size={17} />
+              <span>Super Admin</span>
+            </a>
+          )}
           {filteredSections.length === 0 ? (
             <div style={{ textAlign: 'center', padding: '40px 10px', color: '#8d6f55' }}>
               <p style={{ fontWeight: 600, fontSize: '1.05rem', marginBottom: '8px' }}>No results found</p>

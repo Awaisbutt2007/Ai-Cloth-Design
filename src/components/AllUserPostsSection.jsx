@@ -3,10 +3,26 @@ import { Heart, Star, ArrowLeft } from 'lucide-react';
 import { repairImageUrl, repairPostImages, DEFAULT_POST_PLACEHOLDER } from '../constants';
 import PostImage from './PostImage';
 import { useLikedPostIds, toggleLike, getPostId } from '../lib/reactions';
+import { shouldHidePostFromViewer } from '../lib/posts';
 
-function getAllPosts() {
+function getCurrentViewerEmail() {
+  try {
+    const raw = window.localStorage.getItem('aifashionUserProfile');
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && p.email) return p.email;
+    }
+  } catch {}
+  return '';
+}
+
+function getAllPosts(viewerEmail) {
   const seenIds = new Set();
   const result = [];
+  const isPrivate = (p) => {
+    if (!p || typeof p !== 'object') return false;
+    return Boolean(p.isPrivate ?? p.is_private ?? p.private);
+  };
 
   try {
     const globalStr = window.localStorage.getItem('aifashionGlobalPosts');
@@ -14,6 +30,8 @@ function getAllPosts() {
       const globalArr = JSON.parse(globalStr);
       if (Array.isArray(globalArr)) {
         for (const p of globalArr) {
+          if (isPrivate(p)) continue;
+          if (shouldHidePostFromViewer(p, viewerEmail)) continue;
           const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
           if (!seenIds.has(pid)) {
             seenIds.add(pid);
@@ -28,6 +46,8 @@ function getAllPosts() {
     const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
     const profilePosts = Object.values(allProfiles).flatMap(p => p.postImages || []);
     for (const p of profilePosts) {
+      if (isPrivate(p)) continue;
+      if (shouldHidePostFromViewer(p, viewerEmail)) continue;
       const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
       if (!seenIds.has(pid)) {
         seenIds.add(pid);
@@ -42,7 +62,11 @@ function getAllPosts() {
 function AllUserPostsSection({ activeSection, handleProductClick, handleSectionClick, postsRefreshTick, posts }) {
   void postsRefreshTick;
   const likedPostIds = useLikedPostIds();
-  const allPosts = posts || [];
+  const viewerEmail = getCurrentViewerEmail();
+  const allPosts = (Array.isArray(posts)
+    ? posts.filter((p) => !shouldHidePostFromViewer(p, viewerEmail))
+    : getAllPosts(viewerEmail)
+  ).filter((p) => !(p && typeof p === 'object' && Boolean(p.isPrivate ?? p.is_private ?? p.private)));
 
   return (
     <section id="all-user-posts" className={`section ${(activeSection === 'all-user-posts') ? 'active' : 'hidden'}`}>

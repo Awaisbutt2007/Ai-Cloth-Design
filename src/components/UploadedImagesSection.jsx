@@ -30,6 +30,14 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
     return 'default';
   };
 
+  const getPrivacy = () => {
+    try {
+      return window.localStorage.getItem('aifashionProfilePrivacy') || 'public';
+    } catch (e) {
+      return 'public';
+    }
+  };
+
   const handleUpload = async () => {
     if (uploadInProgressRef.current) return;
     if (selectedFiles.length === 0) {
@@ -53,6 +61,8 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
         } catch (e) {}
       }
 
+      const isPrivate = getPrivacy() === 'private';
+
       await uploadPost({
         files: selectedFiles.map((item) => item.file),
         title,
@@ -63,6 +73,7 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
         authorEmail: userKey,
         authorName,
         authorHandle,
+        isPrivate,
       });
       window.dispatchEvent(new Event('aifashion-posts-updated'));
 
@@ -73,7 +84,11 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
       setStock('');
       setSelectedFiles([]);
 
-      onUploadSuccess?.();
+      onUploadSuccess?.(
+        'Posted! ' + (isPrivate
+          ? 'Only you can see it — it lives under the Private tab on your profile.'
+          : 'Everyone can see it on Home, Search, and in your My Style tab.'),
+      );
     } catch (err) {
       console.error('Upload error:', err);
       onUploadError?.(`Upload failed: ${err?.message || 'Please try again.'}`);
@@ -227,10 +242,10 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
               </div>
 
               <div className="form-group">
-                <label>Price ($)</label>
+                <label>Price (Rs.)</label>
                 <input
                   type="number"
-                  placeholder="e.g. 29.99"
+                  placeholder="e.g. 2999"
                   value={price}
                   onChange={(e) => setPrice(e.target.value)}
                   min="0"
@@ -269,19 +284,6 @@ export default function UploadedImagesSection({ activeSection, userEmail, onUplo
             </div>
             
             <div className="upload-actions-row">
-              <button 
-                className="upload-reset-btn"
-                onClick={() => {
-                  setTitle('');
-                  setCategory('');
-                  setPrice('');
-                  setDescription('');
-                  setStock('');
-                  setSelectedFiles([]);
-                }}
-              >
-                Reset
-              </button>
               <button className="upload-submit-btn" onClick={handleUpload} disabled={uploading} style={{ opacity: uploading ? 0.6 : 1, cursor: uploading ? 'not-allowed' : 'pointer' }}>
                 <UploadCloud size={18} />
                 {uploading ? 'Processing...' : 'Upload'}

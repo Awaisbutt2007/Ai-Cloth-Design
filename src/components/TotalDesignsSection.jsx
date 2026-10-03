@@ -1,12 +1,28 @@
 import React from 'react';
-import { Sparkles, Shirt, Lightbulb, TrendingUp, Grid, Heart, Star, Clock } from 'lucide-react';
+import { Sparkles, Shirt, Lightbulb, TrendingUp, Grid, Heart, Star } from 'lucide-react';
 import { repairImageUrl, repairPostImages, DEFAULT_POST_PLACEHOLDER } from '../constants';
 import PostImage from './PostImage';
 import { useLikedPostIds, toggleLike, getPostId } from '../lib/reactions';
+import { shouldHidePostFromViewer } from '../lib/posts';
 
-function getAllPosts() {
+function getCurrentViewerEmail() {
+  try {
+    const raw = window.localStorage.getItem('aifashionUserProfile');
+    if (raw) {
+      const p = JSON.parse(raw);
+      if (p && p.email) return p.email;
+    }
+  } catch {}
+  return '';
+}
+
+function getAllPosts(viewerEmail) {
   const seenIds = new Set();
   const result = [];
+  const isPrivate = (p) => {
+    if (!p || typeof p !== 'object') return false;
+    return Boolean(p.isPrivate ?? p.is_private ?? p.private);
+  };
 
   try {
     const globalStr = window.localStorage.getItem('aifashionGlobalPosts');
@@ -14,6 +30,8 @@ function getAllPosts() {
       const globalArr = JSON.parse(globalStr);
       if (Array.isArray(globalArr)) {
         for (const p of globalArr) {
+          if (isPrivate(p)) continue;
+          if (shouldHidePostFromViewer(p, viewerEmail)) continue;
           const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
           if (!seenIds.has(pid)) {
             seenIds.add(pid);
@@ -28,6 +46,8 @@ function getAllPosts() {
     const allProfiles = JSON.parse(window.localStorage.getItem('aifashionProfileStats') || '{}');
     const profilePosts = Object.values(allProfiles).flatMap(p => p.postImages || []);
     for (const p of profilePosts) {
+      if (isPrivate(p)) continue;
+      if (shouldHidePostFromViewer(p, viewerEmail)) continue;
       const pid = typeof p === 'object' ? (p.id || p.url || p.title) : p;
       if (!seenIds.has(pid)) {
         seenIds.add(pid);
@@ -39,10 +59,17 @@ function getAllPosts() {
   return result;
 }
 
-function TotalDesignsSection({ activeSection, handleSectionClick, handleProductClick, posts }) {
+function TotalDesignsSection({ activeSection, handleSectionClick, handleProductClick, posts, postsRefreshTick }) {
+  void postsRefreshTick;
   const likedPostIds = useLikedPostIds();
-
-  const allPosts = posts || [];
+  const viewerEmail = getCurrentViewerEmail();
+  const allPosts = (Array.isArray(posts)
+    ? posts.filter((p) =>
+        !(p && typeof p === 'object' && Boolean(p.isPrivate ?? p.is_private ?? p.private))
+        && !shouldHidePostFromViewer(p, viewerEmail)
+      )
+    : getAllPosts(viewerEmail)
+  );
   const quickActions = [
     { title: 'AI Stylist', desc: 'Get outfit recommendations tailored for you', icon: Sparkles },
     { title: 'Virtual Try-On', desc: 'Try outfits virtually before you buy', icon: Shirt },
@@ -50,12 +77,6 @@ function TotalDesignsSection({ activeSection, handleSectionClick, handleProductC
     { title: 'Trends', desc: 'Explore latest fashion trends', icon: TrendingUp },
     { title: 'Outfit Ideas', desc: 'Discover outfit ideas for any occasion', icon: Grid },
   ];
-
-  const recentlyViewedStr = window.localStorage.getItem('aifashionRecentlyViewed');
-  let recentlyViewed = [];
-  if (recentlyViewedStr) {
-    try { recentlyViewed = JSON.parse(recentlyViewedStr); } catch(e) {}
-  }
 
   // Dummy data removed, using real posts from allPosts
 
@@ -211,40 +232,9 @@ function TotalDesignsSection({ activeSection, handleSectionClick, handleProductC
             <button className="view-all-link" onClick={(e) => handleSectionClick(e, 'recently-viewed')}>View All</button>
           </div>
           <div className="trending-looks-grid">
-            {recentlyViewed.length > 0 ? (
-              recentlyViewed.slice(0, 4).map((post, idx) => {
-                const rawImgSrc = typeof post === 'string' ? post : post.url;
-                const imgSrc = repairImageUrl(rawImgSrc);
-                const title = typeof post === 'string' ? `Custom Design` : (post.title || `Custom Design`);
-                const price = typeof post === 'string' ? 'Custom' : `Rs. ${post.price || 0}`;
-                const isNew = typeof post === 'object' && post.isNew;
-
-                return (
-                  <div key={idx} className="trending-product-card" onClick={() => handleProductClick(post)}>
-                    <div className="trending-product-image-wrap">
-                      <PostImage src={imgSrc} alt={title} className="trending-product-image" />
-                      <button
-                        type="button"
-                        className={`trending-product-favorite ${likedPostIds.has(getPostId(post)) ? 'is-liked' : ''}`}
-                        onClick={(e) => { e.stopPropagation(); toggleLike(post); }}
-                        aria-label={likedPostIds.has(getPostId(post)) ? 'Unlike' : 'Like'}
-                        aria-pressed={likedPostIds.has(getPostId(post))}
-                      >
-                        <Heart size={18} fill={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'none'} color={likedPostIds.has(getPostId(post)) ? '#ff5277' : 'currentColor'} />
-                      </button>
-                    </div>
-                    <div className="trending-product-info">
-                      <h4 className="trending-product-name">{title}</h4>
-                      <p className="trending-product-price">{price}</p>
-                    </div>
-                  </div>
-                );
-              })
-            ) : (
-              <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: 'var(--card-bg)', borderRadius: '16px', border: '1px solid var(--border)' }}>
-                <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>No recently viewed designs.</p>
-              </div>
-            )}
+            <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '40px', background: 'var(--card-bg)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+              <p style={{ fontSize: '1.2rem', color: 'var(--text-secondary)' }}>No recently viewed designs.</p>
+            </div>
           </div>
         </div>
 

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Heart, Star, Lightbulb, Minus, Plus, Truck, RefreshCcw, ShieldCheck, Sparkles, ArrowLeft } from 'lucide-react';
 import { repairImageUrl, DEFAULT_POST_PLACEHOLDER } from '../constants';
 import { addToCart } from '../lib/cart';
+import FaceTryOnModal from './FaceTryOnModal';
 
 /** Real images for a product, de-duplicated. Never padded out to a fixed count. */
 function getProductImages(product) {
@@ -34,6 +35,7 @@ export default function ProductDetailsSection({
   const [qty, setQty] = useState(1);
   const [activeImage, setActiveImage] = useState(null);
   const [slideDirection, setSlideDirection] = useState(null);
+  const [showTryOn, setShowTryOn] = useState(false);
 
   const isOpen = activeSection === 'product-details' && !!product;
   const list = Array.isArray(posts) ? posts : [];
@@ -131,6 +133,11 @@ export default function ProductDetailsSection({
     onNotify?.(added ? `${title} added to cart.` : `${title} is already in your cart.`);
   };
 
+  const handleBuyNow = () => {
+    handleAddToCart();
+    handleSectionClick?.({ preventDefault() {} }, 'add-to-cart');
+  };
+
   return (
     <section id="product-details" className={`section ${activeSection === 'product-details' ? 'active' : 'hidden'}`}>
       <div className="dashboard-overview-container" style={{ maxWidth: '1200px', margin: '0 auto', paddingTop: '20px' }}>
@@ -140,7 +147,7 @@ export default function ProductDetailsSection({
           <span>Back to Home</span>
         </button>
 
-        <div className={`product-modal-content ${slideDirection ? `is-slide-${slideDirection}` : ''}`} key={productKey(product)} style={{ maxWidth: '100%', margin: '0', boxShadow: 'none', borderRadius: '24px', padding: '0', border: '1px solid var(--border-color)', overflow: 'hidden', maxHeight: 'none' }}>
+        <div className={`product-modal-content product-details-page ${slideDirection ? `is-slide-${slideDirection}` : ''}`} key={productKey(product)} style={{ maxWidth: '100%', margin: '0', boxShadow: 'none', borderRadius: '24px', padding: '0', border: '1px solid var(--border-color)', overflow: 'hidden', maxHeight: 'none' }}>
           
           <div className="product-modal-body" style={{ padding: '40px' }}>
             {/* Left Gallery */}
@@ -171,7 +178,7 @@ export default function ProductDetailsSection({
                 <button className="main-image-favorite">
                   <Heart size={20} />
                 </button>
-                <button className="ai-try-on-btn">
+                <button className="ai-try-on-btn" type="button" onClick={() => setShowTryOn(true)}>
                   <Sparkles size={16} /> AI Try-On
                 </button>
               </div>
@@ -230,6 +237,9 @@ export default function ProductDetailsSection({
               </div>
 
               <div className="pm-actions">
+                <button className="pm-buy-now" type="button" onClick={handleBuyNow}>
+                  Buy Now
+                </button>
                 <button className="pm-add-to-cart" type="button" onClick={handleAddToCart}>
                   Add to Cart
                 </button>
@@ -253,6 +263,7 @@ export default function ProductDetailsSection({
           </div>
         </div>
       </div>
+      {showTryOn && <FaceTryOnModal product={product} onClose={() => setShowTryOn(false)} />}
     </section>
   );
 }
